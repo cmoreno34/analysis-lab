@@ -96,8 +96,10 @@ pre.prompt{background:#14211b;color:#e8efe6;border-radius:10px;padding:13px;marg
   <h2>2 · Variables — the lab's coding, your call</h2>
   <p class="hint">Each column was read and given a <b>role</b> and, for categories, a <b>coding</b>. Where it wasn't sure it flags a suggestion in orange — change the role or the labels if you disagree. <b>Scale</b> = a rating you can average (interval). <b>Category</b> = groups you count (nominal). <b>Ignore</b> = skip it.</p>
   <div style="overflow:auto"><table class="vtab" id="vtab"></table></div>
-  <div class="row"><button class="btn sm" id="editLabels">Edit category labels…</button><span class="hint" id="labelHint"></span></div>
+  <div class="row" id="binRow" style="margin-top:10px;align-items:flex-end"><div><label class="fl">Turn a number into groups (binning)</label><select id="bin_var"></select></div><div><label class="fl">Groups</label><select id="bin_n"><option>2</option><option selected>3</option><option>4</option><option>5</option></select></div><div><label class="fl">Method</label><select id="bin_m"><option value="count">equal count (quantiles)</option><option value="width">equal width</option></select></div><button class="btn sm" id="bin_go">Create category</button><span class="hint">Makes a new ordered category (e.g. age → bands) you can cross-tabulate or use as t-test groups.</span></div>
+  <div class="row"><button class="btn sm" id="editLabels">Edit category labels…</button><button class="btn sm ghost" id="peekData">See the raw data</button><span class="hint" id="labelHint"></span></div>
   <div id="labelEditor" style="display:none;margin-top:8px"></div>
+  <div id="rawPeek" style="display:none;margin-top:8px;overflow:auto"></div>
 </div>
 
 <div class="card" id="analysisCard" style="display:none">
@@ -108,6 +110,7 @@ pre.prompt{background:#14211b;color:#e8efe6;border-radius:10px;padding:13px;marg
     <button class="tab" data-t="ttest">Compare groups (t-test)</button>
     <button class="tab" data-t="corr">Correlate</button>
   </div>
+  <div class="row" id="runAllRow" style="margin:6px 0 2px"><button class="btn" id="runAll">⚡ Run ALL analyses at once</button><span class="hint">Describe every variable, the full correlation matrix, every cross-tab + chi², and every t-test — no need to pick variables. Four summary tables drop into your results below.</span></div>
   <div id="panel"></div>
 </div>
 
@@ -115,6 +118,7 @@ pre.prompt{background:#14211b;color:#e8efe6;border-radius:10px;padding:13px;marg
   <h2>4 · Your results</h2>
   <p class="hint">Each analysis you run is logged here. Copy the AI prompt to turn it into a client recommendation, or download the PDF.</p>
   <div class="row">
+    <span class="hint" style="align-self:center">in PDF:</span><button class="btn ghost sm" id="pdfall">all</button><button class="btn ghost sm" id="pdfnone">none</button>
     <button class="btn" id="pdf">⬇ Download PDF</button>
     <button class="copybtn" id="copyai">copy AI "turn this into a recommendation" prompt</button>
     <button class="btn ghost sm" id="clearlog">Clear results</button>
@@ -5226,23 +5230,31 @@ function colVals(name,asNum){const V=v(name);let vals=DATA.rows.map(r=>r[name]);
   vals=vals.filter(x=>x!==''&&x!=null);
   return asNum?vals.map(Number).filter(x=>!isNaN(x)):vals.map(x=>String(x));}
 function labelOf(name,code){const V=v(name);return(V.codes&&V.codes[code]!=null)?V.codes[code]:String(code);}
+function _rnd(x){return Math.round(x*100)/100;}
+function makeBin(name,nb,method){const V=v(name);const vals=DATA.rows.map(r=>Number(r[name])).filter((x,i)=>DATA.rows[i][name]!==''&&DATA.rows[i][name]!=null&&!isNaN(x)).sort((a,b)=>a-b);if(vals.length<nb){alert('Not enough values to make '+nb+' groups.');return;}let cuts=[];if(method==='width'){const mn=vals[0],mx=vals[vals.length-1];for(let k=1;k<nb;k++)cuts.push(mn+k*(mx-mn)/nb);}else{for(let k=1;k<nb;k++){const pos=(vals.length-1)*k/nb,lo=Math.floor(pos);cuts.push(vals[lo]+((vals[lo+1]||vals[lo])-vals[lo])*(pos-lo));}}const edges=[vals[0]].concat(cuts).concat([vals[vals.length-1]]);const binOf=x=>{let k=0;while(k<nb-1&&x>cuts[k])k++;return k+1;};let col=name+'_bin',su=1;while(DATA.headers.indexOf(col)>=0)col=name+'_bin'+(++su);DATA.headers.push(col);DATA.rows.forEach(r=>{const x=Number(r[name]);r[col]=(r[name]===''||r[name]==null||isNaN(x))?'':binOf(x);});const codes={};for(let k=1;k<=nb;k++){codes[k]=_rnd(edges[k-1])+'\u2013'+_rnd(edges[k]);}DATA.vars.push({name:col,label:V.label+' (in '+nb+' groups)',role:'ordinal',type:'coded',suggest:'Created by binning '+V.label+' ('+(method==='width'?'equal width':'equal count')+'). Edit the band labels if you like.',codes});renderVars();refreshSelectors();if($('#rawPeek')&&$('#rawPeek').style.display!=='none')renderRawPeek();}
+function roleExplain(role){return({scale:'Scale — a number you can average (a rating or a count). Enables mean/SD, t-test and correlation.',nominal:'Category — named groups you count, not average (e.g. sex, channel). Enables frequencies and cross-tab + chi².',ordinal:'Ordered category — ranked groups (e.g. age band, low/med/high); counted like a category here.',id:'ID — one value per respondent; not analysed.',ignore:'Ignored — left out of every analysis.'})[role]||'';}
+function valuesSeen(V){const raw=DATA.rows.map(r=>r[V.name]);const miss=raw.filter(x=>x===''||x==null).length;const nums=colVals(V.name,true);if(!nums.length)return '<span style="color:var(--soft)">no numeric values</span>';const uniq=[...new Set(nums)].sort((a,b)=>a-b);let s='';if(V.role==='id'){s='unique identifier ('+uniq.length+' values)';}else if(uniq.length<=12){s=uniq.map(u=>{const lb=labelOf(V.name,u);const cnt=nums.filter(x=>x===u).length;return '<b>'+esc(String(u))+'</b>'+(lb!==String(u)?'='+esc(lb):'')+' <span style="color:var(--soft)">('+cnt+')</span>';}).join(' \u00b7 ');}else{s=uniq.length+' distinct, range <b>'+Math.min(...nums)+'\u2013'+Math.max(...nums)+'</b>, mean \u2248 '+mean(nums).toFixed(1);}if(miss)s+=' <span style="color:var(--soft)">\u00b7 '+miss+' blank</span>';return s;}
+function renderRawPeek(){const n=Math.min(20,DATA.rows.length);let h='<table class="t"><tr>'+DATA.headers.map(hd=>'<th>'+esc(hd)+'</th>').join('')+'</tr>';for(let i=0;i<n;i++){h+='<tr>'+DATA.headers.map(hd=>'<td>'+esc(DATA.rows[i][hd])+'</td>').join('')+'</tr>';}h+='</table><div class="hint" style="margin-top:4px">First '+n+' of '+DATA.rows.length+' rows, exactly as in the file (coded values). Use this and the \u201cValues seen\u201d column to decide each variable\u2019s role and what its codes mean.</div>';$('#rawPeek').innerHTML=h;}
 function renderVars(){
-  let h='<tr><th>Variable</th><th>Label</th><th>Role</th><th>Notes</th></tr>';
+  let h='<tr><th>Variable</th><th>Label</th><th>Role (what the lab proposes, and why)</th><th>Values seen in the data</th></tr>';
   DATA.vars.forEach((V,i)=>{
     h+=`<tr><td style="font:600 12.5px ui-monospace,monospace">${esc(V.name)}</td>
       <td><input type="text" data-lbl="${i}" value="${esc(V.label)}" style="width:150px"></td>
       <td><select data-role="${i}">
         ${['scale','nominal','ordinal','id','ignore'].map(r=>`<option value="${r}" ${V.role===r?'selected':''}>${r==='scale'?'Scale (average it)':r==='nominal'?'Category':r==='ordinal'?'Ordered category':r==='id'?'ID':'Ignore'}</option>`).join('')}
       </select></td>
-      <td class="sug">${esc(V.suggest||'')}</td></tr>`;
+      <td class="sug"><div>${roleExplain(V.role)}</div>${V.suggest?'<div style="color:#b36b00;margin-top:3px">\u2192 '+esc(V.suggest)+'</div>':''}</td><td class="sug">${valuesSeen(V)}</td></tr>`;
   });
   $('#vtab').innerHTML=h;
+  {const bv=$('#bin_var');if(bv)bv.innerHTML=DATA.vars.filter(V=>V.role==='scale').map(V=>'<option value="'+esc(V.name)+'">'+esc(V.label)+'</option>').join('')||'<option value="">(no scale variables)</option>';}
   $('#vtab').querySelectorAll('[data-role]').forEach(s=>s.onchange=e=>{const V=DATA.vars[e.target.dataset.role];V.role=e.target.value;V.suggest='';
     if(V.role==='nominal'&&!V.codes){const uniq=[...new Set(colVals(V.name,true))].sort((a,b)=>a-b);V.codes={};uniq.forEach(u=>V.codes[u]=String(u));}
     renderVars();refreshSelectors();});
   $('#vtab').querySelectorAll('[data-lbl]').forEach(inp=>inp.oninput=e=>{DATA.vars[e.target.dataset.lbl].label=e.target.value;refreshSelectors();});
 }
 $('#editLabels').onclick=()=>{const ed=$('#labelEditor');if(ed.style.display==='none'){renderLabelEditor();ed.style.display='';}else ed.style.display='none';};
+$('#peekData')&&($('#peekData').onclick=()=>{const ed=$('#rawPeek');if(ed.style.display==='none'){renderRawPeek();ed.style.display='';}else ed.style.display='none';});
+$('#bin_go')&&($('#bin_go').onclick=()=>{const n=$('#bin_var').value;if(!n)return;makeBin(n,+$('#bin_n').value,$('#bin_m').value);});
 function renderLabelEditor(){
   const cats=DATA.vars.filter(V=>V.role==='nominal'&&V.codes&&Object.keys(V.codes).length<=20&&Object.keys(V.codes).length>1);
   if(!cats.length){$('#labelEditor').innerHTML='<p class="hint">No category variables to label.</p>';return;}
@@ -5368,10 +5380,13 @@ function correlate(){
 
 /* ---- results log + export ---- */
 let LOG=[];
-function logIt(title,html){LOG.push({title,html});renderLog();}
-function renderLog(){$('#log').innerHTML=LOG.map((it,i)=>`<div class="item"><h4>${esc(it.title)} <button class="copybtn" style="float:right;padding:3px 8px;font-size:11px" data-rm="${i}">remove</button></h4>${it.html}</div>`).join('')||'<p class="hint">Run an analysis above and it appears here.</p>';
-  $('#log').querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{LOG.splice(b.dataset.rm,1);renderLog();});}
+function logIt(title,html){LOG.push({title,html,sel:true});renderLog();}
+function renderLog(){$('#log').innerHTML=LOG.map((it,i)=>`<div class="item"><h4>${esc(it.title)} <button class="copybtn" style="float:right;padding:3px 8px;font-size:11px" data-rm="${i}">remove</button><label style="float:right;font-size:11px;margin-right:8px;cursor:pointer"><input type="checkbox" data-sel="${i}" ${it.sel!==false?'checked':''}> in PDF</label></h4>${it.html}</div>`).join('')||'<p class="hint">Run an analysis above and it appears here.</p>';
+  $('#log').querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{LOG.splice(b.dataset.rm,1);renderLog();});
+  $('#log').querySelectorAll('[data-sel]').forEach(cb=>cb.onchange=()=>{LOG[+cb.dataset.sel].sel=cb.checked;});}
 $('#clearlog').onclick=()=>{LOG=[];renderLog();};
+$('#pdfall')&&($('#pdfall').onclick=()=>{LOG.forEach(it=>it.sel=true);renderLog();});
+$('#pdfnone')&&($('#pdfnone').onclick=()=>{LOG.forEach(it=>it.sel=false);renderLog();});
 function buildAIPrompt(){
   let txt='Act as a market research analyst. Turn these statistical results from a survey into a short, client-facing set of findings and a recommendation. For each result say what it means and what it does NOT mean (no causation claims from a cross-tab or correlation; flag any unreliable chi-square). End with one concrete decision.\n\nRESULTS:\n';
   LOG.forEach((it,i)=>{const t=document.createElement('div');t.innerHTML=it.html;txt+=`\n${i+1}. ${it.title}\n${t.innerText.replace(/\n{2,}/g,'\n').trim()}\n`;});
@@ -5380,10 +5395,45 @@ function buildAIPrompt(){
 $('#copyai').onclick=e=>{const p=buildAIPrompt();$('#aiprompt').textContent=p;$('#aiprompt').style.display='';
   navigator.clipboard&&navigator.clipboard.writeText(p).then(()=>{e.target.textContent='copied ✓';setTimeout(()=>e.target.textContent='copy AI "turn this into a recommendation" prompt',1300);}).catch(()=>{});};
 function buildPrintout(){let h=`<h1>Analysis lab — Estudios de Mercado I · Tema 8</h1><div style="font-size:10pt;color:#444;margin-bottom:3mm">${DATA?DATA.rows.length+' rows · '+DATA.headers.length+' variables':''} · ${new Date().toLocaleDateString()}</div>`;
-  LOG.forEach(it=>{h+=`<div class="v"><h3>${esc(it.title)}</h3>${it.html}</div>`;});
-  if(!LOG.length)h+='<p>No analyses run yet.</p>';$('#printout').innerHTML=h;}
+  const _sel=LOG.filter(it=>it.sel!==false);_sel.forEach(it=>{h+=`<div class="v"><h3>${esc(it.title)}</h3>${it.html}</div>`;});
+  if(!_sel.length)h+='<p>Nothing selected for the PDF — tick the “in PDF” boxes next to the results you want.</p>';$('#printout').innerHTML=h;}
 $('#pdf').onclick=()=>{buildPrintout();window.print();};
 window.addEventListener('beforeprint',()=>{if(!$('#printout').innerHTML.trim())buildPrintout();});
+
+
+/* ---- RUN ALL: every analysis at once ---- */
+function _scalesFor(){return DATA.vars.filter(V=>V.role==='scale');}
+function _catsFor(){return DATA.vars.filter(V=>{if(V.role!=='nominal'&&V.role!=='ordinal')return false;const u=[...new Set(colVals(V.name,true))];return u.length>=2&&u.length<=12;});}
+function _abbr(s){s=String(s);return s.length>16?s.slice(0,15)+'…':s;}
+function _corrPair(xn,yn){const xs=[],ys=[];DATA.rows.forEach(r=>{const x=Number(r[xn]),y=Number(r[yn]);if(r[xn]===''||r[yn]===''||isNaN(x)||isNaN(y))return;xs.push(x);ys.push(y);});const n=xs.length;if(n<3)return{r:NaN,p:NaN,n};const mx=mean(xs),my=mean(ys);let sxy=0,sxx=0,syy=0;for(let i=0;i<n;i++){sxy+=(xs[i]-mx)*(ys[i]-my);sxx+=(xs[i]-mx)**2;syy+=(ys[i]-my)**2;}const r=sxy/Math.sqrt(sxx*syy);if(!isFinite(r))return{r:NaN,p:NaN,n};const t=r*Math.sqrt((n-2)/(1-r*r)),p=tP(t,n-2);return{r,p,n};}
+function _crossPair(rn,cn){const pairs=DATA.rows.map(r=>[r[rn],r[cn]]).filter(p=>p[0]!==''&&p[1]!==''&&p[0]!=null&&p[1]!=null);if(pairs.length<4)return null;const rk=[...new Set(pairs.map(p=>p[0]))].sort((a,b)=>a-b),ck=[...new Set(pairs.map(p=>p[1]))].sort((a,b)=>a-b);if(rk.length<2||ck.length<2)return null;const O={};rk.forEach(r=>{O[r]={};ck.forEach(c=>O[r][c]=0);});pairs.forEach(p=>O[p[0]][p[1]]++);const rt={},ct={};let N=0;rk.forEach(r=>{rt[r]=0;ck.forEach(c=>rt[r]+=O[r][c]);N+=rt[r];});ck.forEach(c=>{ct[c]=0;rk.forEach(r=>ct[c]+=O[r][c]);});let chi=0,low=0;rk.forEach(r=>ck.forEach(c=>{const E=rt[r]*ct[c]/N;if(E<5)low++;chi+=(O[r][c]-E)**2/E;}));const df=(rk.length-1)*(ck.length-1),p=chi2p(chi,df),V=Math.sqrt(chi/(N*Math.min(rk.length-1,ck.length-1)));return{chi,df,p,V,low,N};}
+function runAllDesc(){const sc=_scalesFor(),ca=_catsFor();let h='';
+  if(sc.length){h+='<table class="t"><tr><th>Scale variable</th><th>n</th><th>Mean</th><th>Median</th><th>SD</th><th>Min</th><th>Max</th></tr>';sc.forEach(V=>{const a=colVals(V.name,true);if(!a.length)return;h+=`<tr><td style="text-align:left">${esc(V.label)}</td><td>${a.length}</td><td class="hi">${mean(a).toFixed(2)}</td><td>${median(a).toFixed(1)}</td><td>${sd(a).toFixed(2)}</td><td>${Math.min(...a)}</td><td>${Math.max(...a)}</td></tr>`;});h+='</table>';}
+  if(ca.length){h+='<table class="t" style="margin-top:8px"><tr><th>Category variable</th><th>n</th><th>#cats</th><th>Most common</th></tr>';ca.forEach(V=>{const a=colVals(V.name,true);if(!a.length)return;const f={};a.forEach(x=>f[x]=(f[x]||0)+1);const top=Object.keys(f).sort((x,y)=>f[y]-f[x])[0];h+=`<tr><td style="text-align:left">${esc(V.label)}</td><td>${a.length}</td><td>${Object.keys(f).length}</td><td>${esc(labelOf(V.name,top))} (${(100*f[top]/a.length).toFixed(0)}%)</td></tr>`;});h+='</table>';}
+  h+='<div class="verdict">A snapshot of every variable. Scales get a mean (and watch mean vs median for skew); categories get their shares. This is where every project starts.</div>';
+  logIt('Describe — all variables',h);}
+function runAllCorr(){const sc=_scalesFor();if(sc.length<2){logIt('Correlation matrix',' <div class="verdict">Need at least two scale variables.</div>');return;}
+  let h='<div style="overflow:auto"><table class="t"><tr><th></th>'+sc.map(V=>`<th title="${esc(V.label)}">${esc(_abbr(V.label))}</th>`).join('')+'</tr>';
+  sc.forEach((Vi,i)=>{h+=`<tr><td style="text-align:left"><b>${esc(_abbr(Vi.label))}</b></td>`;sc.forEach((Vj,j)=>{if(j>i){h+='<td style="color:#ccc">·</td>';return;}if(i===j){h+='<td class="hi">1</td>';return;}const{r,p}=_corrPair(Vi.name,Vj.name);if(isNaN(r)){h+='<td>—</td>';return;}const star=p<0.01?'**':p<0.05?'*':'';h+=`<td class="${p<0.05?'hi':''}" title="p=${pfmt(p)}">${r.toFixed(2)}${star}</td>`;});h+='</tr>';});
+  h+='</table></div><div class="verdict">Pearson r for every pair of scale variables (lower triangle). <b>*</b> p&lt;.05, <b>**</b> p&lt;.01, two-tailed. r near 0 = no linear link; the sign is the direction; r² (=r×r) is the share of variance shared. Correlation is not causation.</div>';
+  logIt('Correlation matrix — all scale variables',h);}
+function runAllCross(){const ca=_catsFor();if(ca.length<2){logIt('Cross-tabs + chi²','<div class="verdict">Need at least two category variables.</div>');return;}
+  let rows=[];for(let i=0;i<ca.length;i++)for(let j=i+1;j<ca.length;j++){const res=_crossPair(ca[i].name,ca[j].name);if(res)rows.push(Object.assign({a:ca[i].label,b:ca[j].label},res));}
+  rows.sort((x,y)=>(x.low-y.low)||(x.p-y.p));
+  let h='<div style="overflow:auto"><table class="t"><tr><th>Pair of categories</th><th>N</th><th>chi²</th><th>df</th><th>p</th><th>Cramér V</th><th>Reliable?</th></tr>';
+  rows.forEach(R=>{h+=`<tr><td style="text-align:left">${esc(R.a)} × ${esc(R.b)}</td><td>${R.N}</td><td>${R.chi.toFixed(1)}</td><td>${R.df}</td><td class="${R.p<0.05&&R.low===0?'hi':''}">${pfmt(R.p)}</td><td>${R.V.toFixed(2)}</td><td>${R.low>0?'⚠ no ('+R.low+' exp&lt;5)':'yes'}</td></tr>`;});
+  h+='</table></div><div class="verdict">Every pair of categorical variables, chi² test of independence (sorted: reliable &amp; significant first). Rows flagged ⚠ have expected counts below 5 — NOT a valid finding (collapse categories). A reliable, significant row means the two are associated, never that one causes the other.</div>';
+  logIt('Cross-tabs + chi² — all category pairs',h);}
+function runAllT(){const sc=_scalesFor(),ca=_catsFor();if(!sc.length||!ca.length){logIt('t-tests','<div class="verdict">Need at least one scale and one category variable.</div>');return;}
+  let rows=[];ca.forEach(G=>{const a=colVals(G.name,true);const f={};a.forEach(x=>f[x]=(f[x]||0)+1);const top2=Object.keys(f).sort((x,y)=>f[y]-f[x]).slice(0,2);if(top2.length<2||f[top2[0]]<5||f[top2[1]]<5)return;const ga=top2[0],gb=top2[1];
+    sc.forEach(S=>{const A=[],B=[];DATA.rows.forEach(r=>{const s=Number(r[S.name]);if(r[S.name]===''||isNaN(s))return;const g=String(r[G.name]);if(g===String(ga))A.push(s);else if(g===String(gb))B.push(s);});if(A.length<2||B.length<2)return;const mA=mean(A),mB=mean(B),vA=variance(A),vB=variance(B),nA=A.length,nB=B.length;const sp=Math.sqrt(((nA-1)*vA+(nB-1)*vB)/(nA+nB-2)),se=sp*Math.sqrt(1/nA+1/nB);const t=(mA-mB)/se,df=nA+nB-2,p=tP(t,df),d=(mA-mB)/sp;if(!isFinite(t))return;rows.push({s:S.label,g:esc(G.label)+' ('+esc(labelOf(G.name,ga))+' vs '+esc(labelOf(G.name,gb))+')',mA,mB,t,df,p,d});});});
+  rows.sort((x,y)=>x.p-y.p);
+  let h='<div style="overflow:auto"><table class="t"><tr><th>Scale</th><th>Split (2 largest groups)</th><th>Mean A</th><th>Mean B</th><th>t</th><th>df</th><th>p</th><th>d</th></tr>';
+  rows.forEach(R=>{h+=`<tr><td style="text-align:left">${esc(R.s)}</td><td style="text-align:left">${R.g}</td><td>${R.mA.toFixed(2)}</td><td>${R.mB.toFixed(2)}</td><td>${R.t.toFixed(2)}</td><td>${R.df}</td><td class="${R.p<0.05?'hi':''}">${pfmt(R.p)}</td><td>${Math.abs(R.d).toFixed(2)}</td></tr>`;});
+  h+='</table></div><div class="verdict">Every scale compared across the two largest groups of each category (sorted by p). <b>Bold p&lt;.05</b> = a real mean gap; read Cohen’s d for size (0.2 small · 0.5 medium · 0.8 large). Significant is not the same as large.</div>';
+  logIt('t-tests — every scale by every 2-group split',h);}
+function runAll(){if(!DATA){return;}const b=$('#runAll');b.disabled=true;b.textContent='… running';setTimeout(()=>{runAllDesc();runAllCorr();runAllCross();runAllT();b.disabled=false;b.textContent='⚡ Run ALL analyses at once';$('#logCard').scrollIntoView({behavior:'smooth'});},30);}
+if($('#runAll'))$('#runAll').onclick=runAll;
 
 /* ================= embedded case data ================= */
 const VEJA_CSV=`respondent,appeal_allergy_immune,try_relaxing_drink,natural_ingredients,buy_the_benefits,relevant_to_my_life,relax_no_caffeine,sustainability_local,benefits_differentiate,birch_sap_influence,alcohol_alternative,low_sugar_importance,replace_energy_drinks,brand_transparency,social_trends,fitness_importance,selfcare_routines,pay_premium,trust_new_brands,age_group,gender,income,region,buy_channel,education,ethnicity
