@@ -1,0 +1,452 @@
+<!doctype html><html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Analysis lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,900&family=Archivo:wght@400;500;600;700&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<style>
+:root{
+  --ground:#f4f2ea;--panel:#fbfaf5;--ink:#17251d;--soft:#4a5a50;--leaf:#2f6b4f;--leaf-ink:#21503b;
+  --clay:#bd5f3f;--line:#ddd8c9;--sage:#e7ece3;--chip:#eef1e8;--shadow:0 1px 2px rgba(23,37,29,.06),0 8px 24px rgba(23,37,29,.06);
+  --c1:#3b6fb5;--c2:#2f8f8f;--c3:#c9702f;--c4:#7a6bd0;--c5:#b0466b;}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#111713;--panel:#18211b;--ink:#eef1ea;--soft:#a7b7ac;--leaf:#6bbd93;--leaf-ink:#8fd3ac;
+  --clay:#e08a68;--line:#2a352d;--sage:#1e2922;--chip:#212c25;--shadow:0 1px 2px rgba(0,0,0,.3),0 10px 28px rgba(0,0,0,.35);
+  --c1:#6ea8e6;--c2:#63c6c6;--c3:#e0a44f;--c4:#b0a6d6;--c5:#dd7ea0;}}
+:root[data-theme="dark"]{
+  --ground:#111713;--panel:#18211b;--ink:#eef1ea;--soft:#a7b7ac;--leaf:#6bbd93;--leaf-ink:#8fd3ac;
+  --clay:#e08a68;--line:#2a352d;--sage:#1e2922;--chip:#212c25;--shadow:0 1px 2px rgba(0,0,0,.3),0 10px 28px rgba(0,0,0,.35);
+  --c1:#6ea8e6;--c2:#63c6c6;--c3:#e0a44f;--c4:#b0a6d6;--c5:#dd7ea0;}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:Archivo,system-ui,sans-serif;line-height:1.5;padding-inline:clamp(14px,3vw,36px)}
+.wrap{max-width:960px;margin:0 auto}
+header{padding-block:26px 12px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.brandline{font:600 12px/1 Archivo;letter-spacing:.14em;text-transform:uppercase;color:var(--leaf);margin:0 0 8px}
+h1{font-family:Fraunces,Georgia,serif;font-weight:900;font-size:clamp(24px,4.5vw,34px);margin:0}
+.themebtn{background:var(--panel);border:1px solid var(--line);color:var(--soft);border-radius:999px;padding:6px 13px;font:500 13px Archivo;cursor:pointer}
+.sub{font-size:14px;color:var(--soft);margin:14px 0 6px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin:14px 0;box-shadow:var(--shadow)}
+h2{font-family:Fraunces,serif;font-weight:900;font-size:19px;margin:0 0 8px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:6px 0}
+.btn{background:var(--leaf);color:#fff;border:0;border-radius:9px;padding:10px 16px;font:700 13.5px Archivo;cursor:pointer}
+.btn.ghost{background:transparent;border:1px solid var(--line);color:var(--soft)}
+.btn.sm{padding:7px 12px;font-size:12.5px}
+select,input[type=text]{border:1px solid var(--line);border-radius:8px;background:var(--ground);color:var(--ink);padding:8px 10px;font:400 13.5px Archivo}
+label.fl{font:700 10.5px Archivo;letter-spacing:.06em;text-transform:uppercase;color:var(--soft);display:block;margin:0 0 4px}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 12px}
+.tab{border:1px solid var(--line);background:var(--ground);border-radius:999px;padding:8px 15px;font:600 13px Archivo;cursor:pointer;color:var(--ink)}
+.tab[aria-selected="true"]{background:var(--leaf);border-color:var(--leaf);color:#fff}
+table.t{border-collapse:collapse;width:100%;font-size:13px;margin:8px 0}
+table.t th,table.t td{border:1px solid var(--line);padding:5px 8px;text-align:right}
+table.t th:first-child,table.t td:first-child{text-align:left}
+table.t th{background:var(--sage);font:700 11px Archivo;letter-spacing:.03em;text-transform:uppercase;color:var(--soft)}
+table.t td.hi{background:var(--chip);font-weight:700;color:var(--leaf-ink)}
+table.t td.warn{color:var(--clay);font-weight:700}
+.vtab{width:100%;border-collapse:collapse;font-size:13px}
+.vtab th,.vtab td{border:1px solid var(--line);padding:5px 7px;text-align:left;vertical-align:top}
+.vtab th{background:var(--sage);font:700 10.5px Archivo;text-transform:uppercase;color:var(--soft)}
+.vtab select{padding:5px 7px;font-size:12.5px}
+.sug{font-size:11.5px;color:var(--clay)}
+.bars span{display:inline-block}
+.bar{height:16px;background:var(--leaf);border-radius:3px;display:inline-block;vertical-align:middle;margin-right:6px}
+.stat{display:inline-flex;flex-direction:column;background:var(--ground);border:1px solid var(--line);border-radius:9px;padding:7px 12px;margin:3px 6px 3px 0;min-width:74px}
+.stat b{font-family:Fraunces,serif;font-weight:900;font-size:19px;color:var(--leaf-ink)}
+.stat span{font:600 10px Archivo;letter-spacing:.04em;text-transform:uppercase;color:var(--soft)}
+.verdict{background:var(--sage);border-left:4px solid var(--leaf);border-radius:8px;padding:10px 13px;margin:8px 0;font-size:13.5px}
+.verdict.bad{border-left-color:var(--clay)}
+.hint{font-size:12.5px;color:var(--soft);margin:6px 0}
+.warnmsg{font-size:12.5px;color:var(--clay);margin:6px 0}
+canvas{max-width:100%;border:1px solid var(--line);border-radius:8px;background:var(--panel);margin:6px 0}
+.copybtn{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:8px;padding:7px 12px;font:600 12px Archivo;cursor:pointer}
+pre.prompt{background:#14211b;color:#e8efe6;border-radius:10px;padding:13px;margin:8px 0;font:400 12px/1.6 ui-monospace,monospace;white-space:pre-wrap;max-height:220px;overflow:auto}
+.log .item{border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin:8px 0;background:var(--ground);font-size:13px}
+.log .item h4{margin:0 0 4px;font:700 13px Archivo;color:var(--leaf-ink)}
+#printout{display:none}
+@media print{
+  .wrap>*:not(#printwrap){display:none!important}
+  #printwrap,#printout{display:block!important}
+  body{background:#fff;color:#000;padding:0;font:11pt Archivo}
+  #printout h1{font:700 17pt Fraunces,serif;border-bottom:1.5pt solid #000;padding-bottom:2mm;margin:0 0 3mm}
+  #printout h3{font:700 12pt Fraunces,serif;margin:5mm 0 1mm}
+  #printout table{border-collapse:collapse;width:100%;font-size:9.5pt;margin:2mm 0}
+  #printout th,#printout td{border:.5pt solid #999;padding:1.3mm 2.3mm}
+  #printout .v{margin:1.5mm 0;break-inside:avoid}
+}
+</style></head>
+<body><div class="wrap">
+<header>
+  <div><p class="brandline">Estudios de Mercado I · Tema 8 · Statistical analysis</p>
+  <h1>Analysis lab</h1></div>
+  <button class="themebtn" id="theme">◐ Theme</button>
+</header>
+<p class="sub">Load a survey, let the lab <b>code and clean</b> the variables (it suggests; you decide), then run the four analyses of Tema 8 — <b>describe, cross-tab + chi-square, compare groups (t-test), correlate</b> — each with its result read in plain words. Everything runs in your browser; nothing is uploaded.</p>
+
+<div class="card" id="dataCard">
+  <h2>1 · Data</h2>
+  <div class="row">
+    <button class="btn" id="loadVeja">Use the case data (Veja drink survey, n=77)</button>
+    <label class="btn ghost sm" style="cursor:pointer">Upload CSV / Excel<input type="file" id="file" accept=".csv,.xlsx,.xls" style="display:none"></label>
+    <span class="hint" id="dataStatus">No data yet.</span>
+  </div>
+</div>
+
+<div class="card" id="varCard" style="display:none">
+  <h2>2 · Variables — the lab's coding, your call</h2>
+  <p class="hint">Each column was read and given a <b>role</b> and, for categories, a <b>coding</b>. Where it wasn't sure it flags a suggestion in orange — change the role or the labels if you disagree. <b>Scale</b> = a rating you can average (interval). <b>Category</b> = groups you count (nominal). <b>Ignore</b> = skip it.</p>
+  <div style="overflow:auto"><table class="vtab" id="vtab"></table></div>
+  <div class="row"><button class="btn sm" id="editLabels">Edit category labels…</button><span class="hint" id="labelHint"></span></div>
+  <div id="labelEditor" style="display:none;margin-top:8px"></div>
+</div>
+
+<div class="card" id="analysisCard" style="display:none">
+  <h2>3 · Analyse</h2>
+  <div class="tabs" id="tabs">
+    <button class="tab" data-t="desc" aria-selected="true">Describe</button>
+    <button class="tab" data-t="cross">Cross-tab + chi²</button>
+    <button class="tab" data-t="ttest">Compare groups (t-test)</button>
+    <button class="tab" data-t="corr">Correlate</button>
+  </div>
+  <div id="panel"></div>
+</div>
+
+<div class="card" id="logCard" style="display:none">
+  <h2>4 · Your results</h2>
+  <p class="hint">Each analysis you run is logged here. Copy the AI prompt to turn it into a client recommendation, or download the PDF.</p>
+  <div class="row">
+    <button class="btn" id="pdf">⬇ Download PDF</button>
+    <button class="copybtn" id="copyai">copy AI "turn this into a recommendation" prompt</button>
+    <button class="btn ghost sm" id="clearlog">Clear results</button>
+  </div>
+  <pre class="prompt" id="aiprompt" style="display:none"></pre>
+  <div class="log" id="log"></div>
+</div>
+
+<p class="hint" style="margin:14px 0 40px">A table is not an answer — every result here ends in what it means and what it does NOT mean. A cross-tab shows where to look, never that one thing causes another; a correlation is not causation; and a chi-square with expected counts below 5 is not a finding.</p>
+</div>
+<div id="printwrap"><div id="printout"></div></div>
+
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const root=document.documentElement;$('#theme').onclick=()=>{const c=root.getAttribute('data-theme');root.setAttribute('data-theme',c==='dark'?'light':c==='light'?'dark':(matchMedia('(prefers-color-scheme:dark)').matches?'light':'dark'));};
+
+/* ================= stats ================= */
+function mean(a){return a.reduce((s,x)=>s+x,0)/a.length;}
+function variance(a){const m=mean(a);return a.reduce((s,x)=>s+(x-m)*(x-m),0)/(a.length-1);}
+function sd(a){return Math.sqrt(variance(a));}
+function median(a){const b=[...a].sort((x,y)=>x-y);const n=b.length;return n%2?b[(n-1)/2]:(b[n/2-1]+b[n/2])/2;}
+function mode(a){const m={};let best=a[0],bc=0;a.forEach(x=>{m[x]=(m[x]||0)+1;if(m[x]>bc){bc=m[x];best=x;}});return best;}
+function gammln(xx){const c=[76.18009172947146,-86.50532032941677,24.01409824083091,-1.231739572450155,0.1208650973866179e-2,-0.5395239384953e-5];let x=xx,y=xx,t=x+5.5;t-=(x+0.5)*Math.log(t);let s=1.000000000190015;for(let j=0;j<6;j++){y++;s+=c[j]/y;}return -t+Math.log(2.5066282746310005*s/x);}
+function gser(a,x){const g=gammln(a);if(x<=0)return 0;let ap=a,sum=1/a,del=sum;for(let n=0;n<300;n++){ap++;del*=x/ap;sum+=del;if(Math.abs(del)<Math.abs(sum)*1e-12)break;}return sum*Math.exp(-x+a*Math.log(x)-g);}
+function gcf(a,x){const g=gammln(a);let b=x+1-a,c=1e30,d=1/b,h=d;for(let i=1;i<=300;i++){const an=-i*(i-a);b+=2;d=an*d+b;if(Math.abs(d)<1e-30)d=1e-30;c=b+an/c;if(Math.abs(c)<1e-30)c=1e-30;d=1/d;const del=d*c;h*=del;if(Math.abs(del-1)<1e-12)break;}return Math.exp(-x+a*Math.log(x)-g)*h;}
+function gammp(a,x){if(x<0||a<=0)return NaN;return x<a+1?gser(a,x):1-gcf(a,x);}
+function chi2p(x,k){return 1-gammp(k/2,x/2);}                 // upper tail p
+function betacf(a,b,x){const qab=a+b,qap=a+1,qam=a-1;let c=1,d=1-qab*x/qap;if(Math.abs(d)<1e-30)d=1e-30;d=1/d;let h=d;for(let m=1;m<=300;m++){const m2=2*m;let aa=m*(b-m)*x/((qam+m2)*(a+m2));d=1+aa*d;if(Math.abs(d)<1e-30)d=1e-30;c=1+aa/c;if(Math.abs(c)<1e-30)c=1e-30;d=1/d;h*=d*c;aa=-(a+m)*(qab+m)*x/((a+m2)*(qap+m2));d=1+aa*d;if(Math.abs(d)<1e-30)d=1e-30;c=1+aa/c;if(Math.abs(c)<1e-30)c=1e-30;d=1/d;const del=d*c;h*=del;if(Math.abs(del-1)<1e-12)break;}return h;}
+function betai(a,b,x){if(x<=0)return 0;if(x>=1)return 1;const bt=Math.exp(gammln(a+b)-gammln(a)-gammln(b)+a*Math.log(x)+b*Math.log(1-x));return x<(a+1)/(a+b+2)?bt*betacf(a,b,x)/a:1-bt*betacf(b,a,1-x)/b;}
+function tP(t,df){return betai(df/2,0.5,df/(df+t*t));}        // two-tailed p
+function pfmt(p){return p<0.001?'< 0.001':p.toFixed(3);}
+function sig(p){return p<0.05?'statistically significant (p '+(p<0.001?'< 0.001':'= '+p.toFixed(3))+')':'not significant (p = '+p.toFixed(3)+')';}
+
+/* ================= data model ================= */
+let DATA=null;   // {vars:[{name,label,role,type,codes}], rows:[{name:val}]}
+const DEMO=/age|gender|sex|region|income|channel|educ|ethnic|country|city|zone|segment|cluster|group$/i;
+function pretty(n){return n.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());}
+function detect(col,name){
+  const ne=col.filter(v=>v!==''&&v!=null);
+  if(/^(id|respondent|resp|record|#)/i.test(name))return{role:'id',type:'id'};
+  const nums=ne.map(Number),allNum=ne.length&&nums.every(v=>!isNaN(v));
+  const distinct=[...new Set(ne)];
+  if(allNum){
+    const ints=nums.every(Number.isInteger),mn=Math.min(...nums),mx=Math.max(...nums);
+    if(ints&&distinct.length<=12&&mn>=0){
+      if(DEMO.test(name))return{role:'nominal',type:'coded',suggest:'Looks like a coded category — check the labels.'};
+      if(mn>=1&&mx<=7)return{role:'scale',type:'likert',suggest:'Looks like a 1–'+mx+' rating scale.'};
+      return{role:'nominal',type:'coded',suggest:'Small whole numbers — scale or category? You choose.'};
+    }
+    return{role:'scale',type:'ratio'};
+  }
+  return{role:'nominal',type:'text',suggest:'Text answers — coded to numbers automatically.'};
+}
+function buildVars(headers,matrix){
+  const vars=headers.map((h,ci)=>{
+    const col=matrix.map(r=>r[ci]);const d=detect(col,h);
+    const v={name:h,label:pretty(h),role:d.role,type:d.type,suggest:d.suggest||'',codes:null};
+    if(v.role==='nominal'){
+      if(d.type==='text'){const uniq=[...new Set(col.filter(x=>x!==''&&x!=null))];v.codes={};uniq.forEach((u,i)=>v.codes[i+1]=u);v.textmap={};uniq.forEach((u,i)=>v.textmap[u]=i+1);}
+      else{const uniq=[...new Set(col.filter(x=>x!==''&&x!=null).map(Number))].sort((a,b)=>a-b);v.codes={};uniq.forEach(u=>v.codes[u]=String(u));}
+    }
+    return v;
+  });
+  return vars;
+}
+const VEJA_LABELS={age_group:{1:'18–24',2:'25–34',3:'35–44',4:'45–54',5:'55–64',6:'65+'},gender:{1:'Female',2:'Male',3:'Other / NA'},income:{1:'< 15k',2:'15–25k',3:'25–35k',4:'35–50k',5:'50–75k',6:'75k +'},region:{1:'Region 1',2:'Region 2',3:'Region 3',4:'Region 4',5:'Region 5',6:'Region 6'},buy_channel:{1:'Supermarket',2:'Online',3:'Convenience',4:'Health store',5:'Gym / café',6:'Other'},education:{1:'School',2:'Vocational',3:'Bachelor',4:'Master',5:'Doctorate'},ethnicity:{1:'Group 1',2:'Group 2',3:'Group 3',4:'Group 4',5:'Group 5',6:'Group 6',7:'Group 7',8:'Group 8',9:'Group 9'}};
+function applyVejaLabels(vars){vars.forEach(v=>{if(VEJA_LABELS[v.name]){v.role='nominal';v.type='coded';v.suggest='';const cb={};Object.keys(VEJA_LABELS[v.name]).forEach(k=>cb[k]=VEJA_LABELS[v.name][k]);v.codes=cb;}});}
+
+function parseCSV(text){
+  const lines=text.replace(/\r/g,'').split('\n').filter(l=>l.trim().length);
+  const split=l=>{const out=[];let cur='',q=false;for(let i=0;i<l.length;i++){const ch=l[i];if(ch=='"'){if(q&&l[i+1]=='"'){cur+='"';i++;}else q=!q;}else if(ch==','&&!q){out.push(cur);cur='';}else cur+=ch;}out.push(cur);return out.map(s=>s.trim());};
+  const headers=split(lines[0]);const matrix=lines.slice(1).map(split);
+  return {headers,matrix};
+}
+function loadMatrix(headers,matrix,isVeja){
+  const vars=buildVars(headers,matrix);if(isVeja)applyVejaLabels(vars);
+  const rows=matrix.map(r=>{const o={};headers.forEach((h,i)=>o[h]=r[i]);return o;});
+  DATA={vars,rows,headers};
+  renderVars();$('#varCard').style.display='';$('#analysisCard').style.display='';$('#logCard').style.display='';
+  $('#dataStatus').textContent=rows.length+' rows · '+headers.length+' variables loaded.';
+  openTab('desc');
+}
+/* ---- loaders ---- */
+$('#loadVeja').onclick=()=>{const {headers,matrix}=parseCSV(VEJA_CSV);loadMatrix(headers,matrix,true);};
+$('#file').onchange=e=>{const f=e.target.files[0];if(!f)return;const fr=new FileReader();
+  if(/\.csv$/i.test(f.name)){fr.onload=()=>{const {headers,matrix}=parseCSV(fr.result);loadMatrix(headers,matrix,false);};fr.readAsText(f);}
+  else{fr.onload=()=>{try{const wb=XLSX.read(fr.result,{type:'array'});const ws=wb.Sheets[wb.SheetNames[0]];const aoa=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:''});const headers=aoa[0].map(String);const matrix=aoa.slice(1).filter(r=>r.some(c=>c!==''&&c!=null)).map(r=>headers.map((_,i)=>r[i]==null?'':String(r[i])));loadMatrix(headers,matrix,false);}catch(err){$('#dataStatus').textContent='Could not read that file: '+err.message;}};fr.readAsArrayBuffer(f);}};
+
+/* ---- variable table ---- */
+function v(name){return DATA.vars.find(x=>x.name===name);}
+function colVals(name,asNum){const V=v(name);let vals=DATA.rows.map(r=>r[name]);
+  if(V.textmap){vals=vals.map(x=>x in V.textmap?V.textmap[x]:'');}
+  vals=vals.filter(x=>x!==''&&x!=null);
+  return asNum?vals.map(Number).filter(x=>!isNaN(x)):vals.map(x=>String(x));}
+function labelOf(name,code){const V=v(name);return(V.codes&&V.codes[code]!=null)?V.codes[code]:String(code);}
+function renderVars(){
+  let h='<tr><th>Variable</th><th>Label</th><th>Role</th><th>Notes</th></tr>';
+  DATA.vars.forEach((V,i)=>{
+    h+=`<tr><td style="font:600 12.5px ui-monospace,monospace">${esc(V.name)}</td>
+      <td><input type="text" data-lbl="${i}" value="${esc(V.label)}" style="width:150px"></td>
+      <td><select data-role="${i}">
+        ${['scale','nominal','ordinal','id','ignore'].map(r=>`<option value="${r}" ${V.role===r?'selected':''}>${r==='scale'?'Scale (average it)':r==='nominal'?'Category':r==='ordinal'?'Ordered category':r==='id'?'ID':'Ignore'}</option>`).join('')}
+      </select></td>
+      <td class="sug">${esc(V.suggest||'')}</td></tr>`;
+  });
+  $('#vtab').innerHTML=h;
+  $('#vtab').querySelectorAll('[data-role]').forEach(s=>s.onchange=e=>{const V=DATA.vars[e.target.dataset.role];V.role=e.target.value;V.suggest='';
+    if(V.role==='nominal'&&!V.codes){const uniq=[...new Set(colVals(V.name,true))].sort((a,b)=>a-b);V.codes={};uniq.forEach(u=>V.codes[u]=String(u));}
+    renderVars();refreshSelectors();});
+  $('#vtab').querySelectorAll('[data-lbl]').forEach(inp=>inp.oninput=e=>{DATA.vars[e.target.dataset.lbl].label=e.target.value;refreshSelectors();});
+}
+$('#editLabels').onclick=()=>{const ed=$('#labelEditor');if(ed.style.display==='none'){renderLabelEditor();ed.style.display='';}else ed.style.display='none';};
+function renderLabelEditor(){
+  const cats=DATA.vars.filter(V=>V.role==='nominal'&&V.codes&&Object.keys(V.codes).length<=20&&Object.keys(V.codes).length>1);
+  if(!cats.length){$('#labelEditor').innerHTML='<p class="hint">No category variables to label.</p>';return;}
+  let h='';
+  cats.forEach(V=>{h+=`<div style="margin:8px 0"><b>${esc(V.label)}</b><div class="row">`+Object.keys(V.codes).map(k=>`<span><label class="fl">${esc(k)}</label><input type="text" data-code="${V.name}|${k}" value="${esc(V.codes[k])}" style="width:110px"></span>`).join('')+`</div></div>`;});
+  $('#labelEditor').innerHTML=h;
+  $('#labelEditor').querySelectorAll('[data-code]').forEach(inp=>inp.oninput=e=>{const [nm,k]=e.target.dataset.code.split('|');v(nm).codes[k]=e.target.value;refreshSelectors();});
+}
+
+/* ---- analysis tabs ---- */
+let TAB='desc';
+$('#tabs').querySelectorAll('.tab').forEach(t=>t.onclick=()=>openTab(t.dataset.t));
+function openTab(t){TAB=t;$('#tabs').querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-selected',x.dataset.t===t));render[t]();}
+function opts(filterRole){return DATA.vars.filter(V=>filterRole.includes(V.role)).map(V=>`<option value="${esc(V.name)}">${esc(V.label)}</option>`).join('');}
+function refreshSelectors(){if(DATA)render[TAB]&&render[TAB]();}
+const render={};
+render.desc=()=>{
+  $('#panel').innerHTML=`<label class="fl">Variable to describe</label>
+    <div class="row"><select id="d_var">${opts(['scale','nominal','ordinal'])}</select><button class="btn sm" id="d_go">Describe</button></div>
+    <div id="d_out"></div>`;
+  $('#d_go').onclick=describe;
+};
+function describe(){
+  const name=$('#d_var').value,V=v(name);let h='';
+  if(V.role==='scale'){
+    const a=colVals(name,true);
+    h+=`<div style="margin-top:8px"><span class="stat"><b>${mean(a).toFixed(2)}</b><span>Mean</span></span>
+      <span class="stat"><b>${median(a).toFixed(1)}</b><span>Median</span></span>
+      <span class="stat"><b>${mode(a)}</b><span>Mode</span></span>
+      <span class="stat"><b>${sd(a).toFixed(2)}</b><span>Std dev</span></span>
+      <span class="stat"><b>${Math.min(...a)}–${Math.max(...a)}</b><span>Range</span></span>
+      <span class="stat"><b>${a.length}</b><span>n</span></span></div>`;
+    const freq={};a.forEach(x=>freq[x]=(freq[x]||0)+1);const mx=Math.max(...Object.values(freq));
+    h+='<table class="t"><tr><th>Value</th><th>Count</th><th>%</th><th>Distribution</th></tr>';
+    Object.keys(freq).sort((x,y)=>x-y).forEach(k=>{h+=`<tr><td>${k}</td><td>${freq[k]}</td><td>${(100*freq[k]/a.length).toFixed(1)}%</td><td style="text-align:left"><span class="bar" style="width:${(freq[k]/mx*160).toFixed(0)}px"></span></td></tr>`;});
+    h+='</table>';
+    const diff=Math.abs(mean(a)-median(a));
+    h+=`<div class="verdict">Mean ${mean(a).toFixed(2)}, median ${median(a).toFixed(1)}. ${diff>0.5?'They differ, so the distribution is skewed — a few extreme answers pull the mean. Report both.':'Mean and median agree, so the distribution is fairly symmetric.'} The mean summarises; the distribution reveals.</div>`;
+    logIt('Describe — '+V.label,h);
+  }else{
+    const a=colVals(name,true);const freq={};a.forEach(x=>freq[x]=(freq[x]||0)+1);const mx=Math.max(...Object.values(freq));
+    h+='<table class="t"><tr><th>Category</th><th>Count</th><th>%</th><th>Distribution</th></tr>';
+    Object.keys(freq).sort((x,y)=>x-y).forEach(k=>{h+=`<tr><td>${esc(labelOf(name,k))}</td><td>${freq[k]}</td><td>${(100*freq[k]/a.length).toFixed(1)}%</td><td style="text-align:left"><span class="bar" style="width:${(freq[k]/mx*160).toFixed(0)}px"></span></td></tr>`;});
+    h+='</table>';
+    const top=Object.keys(freq).sort((x,y)=>freq[y]-freq[x])[0];
+    h+=`<div class="verdict">The most common category is <b>${esc(labelOf(name,top))}</b> (${(100*freq[top]/a.length).toFixed(0)}%). For a category you count and compare shares — there is no mean to take.</div>`;
+    logIt('Describe — '+V.label,h);
+  }
+  $('#d_out').innerHTML=h;
+}
+render.cross=()=>{
+  $('#panel').innerHTML=`<div class="row"><div><label class="fl">Rows (category)</label><select id="c_r">${opts(['nominal','ordinal'])}</select></div>
+    <div><label class="fl">Columns (category)</label><select id="c_c">${opts(['nominal','ordinal'])}</select></div>
+    <button class="btn sm" id="c_go" style="align-self:flex-end">Cross-tabulate</button></div><div id="c_out"></div>`;
+  $('#c_go').onclick=crosstab;
+};
+function crosstab(){
+  const rn=$('#c_r').value,cn=$('#c_c').value;if(rn===cn){$('#c_out').innerHTML='<p class="warnmsg">Pick two different variables.</p>';return;}
+  const pairs=DATA.rows.map(r=>[r[rn],r[cn]]).filter(p=>p[0]!==''&&p[1]!==''&&p[0]!=null&&p[1]!=null);
+  const rk=[...new Set(pairs.map(p=>p[0]))].sort((a,b)=>a-b),ck=[...new Set(pairs.map(p=>p[1]))].sort((a,b)=>a-b);
+  const O={};rk.forEach(r=>{O[r]={};ck.forEach(c=>O[r][c]=0);});pairs.forEach(p=>O[p[0]][p[1]]++);
+  const rt={},ct={};let N=0;rk.forEach(r=>{rt[r]=0;ck.forEach(c=>{rt[r]+=O[r][c];});N+=rt[r];});ck.forEach(c=>{ct[c]=0;rk.forEach(r=>{ct[c]+=O[r][c];});});
+  let chi=0,low=0;rk.forEach(r=>ck.forEach(c=>{const E=rt[r]*ct[c]/N;if(E<5)low++;chi+=(O[r][c]-E)*(O[r][c]-E)/E;}));
+  const df=(rk.length-1)*(ck.length-1),p=chi2p(chi,df),V=Math.sqrt(chi/(N*Math.min(rk.length-1,ck.length-1)));
+  let h='<table class="t"><tr><th>'+esc(v(rn).label)+' \\ '+esc(v(cn).label)+'</th>'+ck.map(c=>`<th>${esc(labelOf(cn,c))}</th>`).join('')+'<th>Total</th></tr>';
+  rk.forEach(r=>{h+=`<tr><td>${esc(labelOf(rn,r))}</td>`+ck.map(c=>`<td>${O[r][c]}<br><span style="color:var(--soft);font-size:11px">${(100*O[r][c]/rt[r]||0).toFixed(0)}%</span></td>`).join('')+`<td class="hi">${rt[r]}</td></tr>`;});
+  h+='<tr><td>Total</td>'+ck.map(c=>`<td class="hi">${ct[c]}</td>`).join('')+`<td class="hi">${N}</td></tr></table>`;
+  h+=`<div style="margin-top:6px"><span class="stat"><b>${chi.toFixed(2)}</b><span>Chi-square</span></span><span class="stat"><b>${df}</b><span>df</span></span><span class="stat"><b>${pfmt(p)}</b><span>p-value</span></span><span class="stat"><b>${V.toFixed(2)}</b><span>Cramér's V</span></span></div>`;
+  if(low>0)h+=`<div class="verdict bad">⚠ ${low} cell(s) have an expected count below 5, so the chi-square is UNRELIABLE here — do not report it as a finding (collapse categories or get a bigger sample). This is the classic trap.</div>`;
+  else h+=`<div class="verdict">The association is ${sig(p)}. ${p<0.05?'The row percentages differ more than chance would explain — worth acting on.':'The groups look similar; the differences you see are within chance.'} Cramér's V = ${V.toFixed(2)} (0 = none, 1 = perfect) measures how strong it is. A cross-tab shows where to look — it does NOT prove causation.</div>`;
+  $('#c_out').innerHTML=h;logIt('Cross-tab — '+v(rn).label+' × '+v(cn).label,h);
+}
+render.ttest=()=>{
+  $('#panel').innerHTML=`<div class="row"><div><label class="fl">Scale to compare</label><select id="t_s">${opts(['scale'])}</select></div>
+    <div><label class="fl">Group variable (pick 2 groups)</label><select id="t_g">${opts(['nominal','ordinal'])}</select></div>
+    <button class="btn sm" id="t_next" style="align-self:flex-end">Next</button></div><div id="t_groups"></div><div id="t_out"></div>`;
+  $('#t_next').onclick=()=>{const gn=$('#t_g').value;const ks=[...new Set(colVals(gn,true))].sort((a,b)=>a-b);
+    $('#t_groups').innerHTML=`<div class="row"><div><label class="fl">Group A</label><select id="t_a">${ks.map(k=>`<option value="${k}">${esc(labelOf(gn,k))}</option>`).join('')}</select></div>
+      <div><label class="fl">Group B</label><select id="t_b">${ks.map((k,i)=>`<option value="${k}" ${i==1?'selected':''}>${esc(labelOf(gn,k))}</option>`).join('')}</select></div>
+      <button class="btn sm" id="t_go" style="align-self:flex-end">Run t-test</button></div>`;
+    $('#t_go').onclick=ttest;};
+};
+function ttest(){
+  const sn=$('#t_s').value,gn=$('#t_g').value,ga=$('#t_a').value,gb=$('#t_b').value;
+  if(ga===gb){$('#t_out').innerHTML='<p class="warnmsg">Pick two different groups.</p>';return;}
+  const A=[],B=[];DATA.rows.forEach(r=>{const g=String(r[gn]),s=Number(r[sn]);if(isNaN(s)||r[sn]==='')return;if(g===String(ga))A.push(s);else if(g===String(gb))B.push(s);});
+  if(A.length<2||B.length<2){$('#t_out').innerHTML='<p class="warnmsg">Not enough data in one of the groups.</p>';return;}
+  const mA=mean(A),mB=mean(B),vA=variance(A),vB=variance(B),nA=A.length,nB=B.length;
+  const sp=Math.sqrt(((nA-1)*vA+(nB-1)*vB)/(nA+nB-2)),se=sp*Math.sqrt(1/nA+1/nB);
+  const t=(mA-mB)/se,df=nA+nB-2,p=tP(t,df),d=(mA-mB)/sp;
+  let h=`<table class="t"><tr><th>Group</th><th>n</th><th>Mean</th><th>SD</th></tr>
+    <tr><td>${esc(labelOf(gn,ga))}</td><td>${nA}</td><td class="hi">${mA.toFixed(2)}</td><td>${sd(A).toFixed(2)}</td></tr>
+    <tr><td>${esc(labelOf(gn,gb))}</td><td>${nB}</td><td class="hi">${mB.toFixed(2)}</td><td>${sd(B).toFixed(2)}</td></tr></table>`;
+  h+=`<div><span class="stat"><b>${(mA-mB).toFixed(2)}</b><span>Mean diff</span></span><span class="stat"><b>${t.toFixed(2)}</b><span>t</span></span><span class="stat"><b>${df}</b><span>df</span></span><span class="stat"><b>${pfmt(p)}</b><span>p-value</span></span><span class="stat"><b>${Math.abs(d).toFixed(2)}</b><span>Cohen's d</span></span></div>`;
+  const dsz=Math.abs(d)<0.2?'negligible':Math.abs(d)<0.5?'small':Math.abs(d)<0.8?'medium':'large';
+  h+=`<div class="verdict ${p<0.05?'':'bad'}">${esc(v(sn).label)} is ${mA>mB?'higher':'lower'} for <b>${esc(labelOf(gn,ga))}</b> (${mA.toFixed(2)}) than <b>${esc(labelOf(gn,gb))}</b> (${mB.toFixed(2)}). The difference is ${sig(p)}. Effect size d = ${Math.abs(d).toFixed(2)} (${dsz}). ${p<0.05?'Real and '+(dsz==='negligible'||dsz==='small'?'but small — ask if it is big enough to act on.':'worth acting on.'):'Could easily be chance — do not build a decision on it.'}</div>`;
+  $('#t_out').innerHTML=h;logIt('t-test — '+v(sn).label+' by '+v(gn).label,h);
+}
+render.corr=()=>{
+  $('#panel').innerHTML=`<div class="row"><div><label class="fl">Scale X</label><select id="r_x">${opts(['scale'])}</select></div>
+    <div><label class="fl">Scale Y</label><select id="r_y">${opts(['scale'])}</select></div>
+    <button class="btn sm" id="r_go" style="align-self:flex-end">Correlate</button></div><div id="r_out"></div>`;
+  $('#r_go').onclick=correlate;
+};
+function correlate(){
+  const xn=$('#r_x').value,yn=$('#r_y').value;if(xn===yn){$('#r_out').innerHTML='<p class="warnmsg">Pick two different variables.</p>';return;}
+  const xs=[],ys=[];DATA.rows.forEach(r=>{const x=Number(r[xn]),y=Number(r[yn]);if(r[xn]===''||r[yn]===''||isNaN(x)||isNaN(y))return;xs.push(x);ys.push(y);});
+  const n=xs.length,mx=mean(xs),my=mean(ys);let sxy=0,sxx=0,syy=0;for(let i=0;i<n;i++){sxy+=(xs[i]-mx)*(ys[i]-my);sxx+=(xs[i]-mx)**2;syy+=(ys[i]-my)**2;}
+  const r=sxy/Math.sqrt(sxx*syy);const t=r*Math.sqrt((n-2)/(1-r*r)),p=tP(t,n-2);
+  const str=Math.abs(r)<0.1?'negligible':Math.abs(r)<0.3?'weak':Math.abs(r)<0.5?'moderate':Math.abs(r)<0.7?'strong':'very strong';
+  let h=`<div style="margin-top:6px"><span class="stat"><b>${r.toFixed(2)}</b><span>Pearson r</span></span><span class="stat"><b>${(r*r*100).toFixed(0)}%</b><span>variance shared (r²)</span></span><span class="stat"><b>${pfmt(p)}</b><span>p-value</span></span><span class="stat"><b>${n}</b><span>n</span></span></div>`;
+  h+='<canvas id="scatter" width="560" height="320"></canvas>';
+  h+=`<div class="verdict ${p<0.05?'':'bad'}">${esc(v(xn).label)} and ${esc(v(yn).label)} have a <b>${str} ${r>0?'positive':'negative'}</b> correlation (r = ${r.toFixed(2)}), ${sig(p)}. ${r>0?'They rise together.':'As one rises the other falls.'} <b>Correlation is not causation</b> — a third factor could drive both.</div>`;
+  $('#r_out').innerHTML=h;
+  const cv=$('#scatter'),ctx=cv.getContext('2d');ctx.clearRect(0,0,cv.width,cv.height);
+  const pad=36,w=cv.width-2*pad,ht=cv.height-2*pad;const xmn=Math.min(...xs),xmx=Math.max(...xs),ymn=Math.min(...ys),ymx=Math.max(...ys);
+  const cs=getComputedStyle(document.body);const col=cs.getPropertyValue('--leaf').trim()||'#2f6b4f',ink=cs.getPropertyValue('--soft').trim()||'#4a5a50';
+  ctx.strokeStyle=ink;ctx.globalAlpha=.4;ctx.beginPath();ctx.moveTo(pad,pad);ctx.lineTo(pad,pad+ht);ctx.lineTo(pad+w,pad+ht);ctx.stroke();ctx.globalAlpha=1;
+  const jit=()=>(Math.random()-.5)*6;
+  ctx.fillStyle=col;ctx.globalAlpha=.6;xs.forEach((x,i)=>{const px=pad+(x-xmn)/((xmx-xmn)||1)*w+jit(),py=pad+ht-(ys[i]-ymn)/((ymx-ymn)||1)*ht+jit();ctx.beginPath();ctx.arc(px,py,4,0,7);ctx.fill();});ctx.globalAlpha=1;
+  logIt('Correlation — '+v(xn).label+' × '+v(yn).label,h.replace(/<canvas[^<]*<\/canvas>/,'<i>[scatter plot]</i>'));
+}
+
+/* ---- results log + export ---- */
+let LOG=[];
+function logIt(title,html){LOG.push({title,html});renderLog();}
+function renderLog(){$('#log').innerHTML=LOG.map((it,i)=>`<div class="item"><h4>${esc(it.title)} <button class="copybtn" style="float:right;padding:3px 8px;font-size:11px" data-rm="${i}">remove</button></h4>${it.html}</div>`).join('')||'<p class="hint">Run an analysis above and it appears here.</p>';
+  $('#log').querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{LOG.splice(b.dataset.rm,1);renderLog();});}
+$('#clearlog').onclick=()=>{LOG=[];renderLog();};
+function buildAIPrompt(){
+  let txt='Act as a market research analyst. Turn these statistical results from a survey into a short, client-facing set of findings and a recommendation. For each result say what it means and what it does NOT mean (no causation claims from a cross-tab or correlation; flag any unreliable chi-square). End with one concrete decision.\n\nRESULTS:\n';
+  LOG.forEach((it,i)=>{const t=document.createElement('div');t.innerHTML=it.html;txt+=`\n${i+1}. ${it.title}\n${t.innerText.replace(/\n{2,}/g,'\n').trim()}\n`;});
+  return txt;
+}
+$('#copyai').onclick=e=>{const p=buildAIPrompt();$('#aiprompt').textContent=p;$('#aiprompt').style.display='';
+  navigator.clipboard&&navigator.clipboard.writeText(p).then(()=>{e.target.textContent='copied ✓';setTimeout(()=>e.target.textContent='copy AI "turn this into a recommendation" prompt',1300);}).catch(()=>{});};
+function buildPrintout(){let h=`<h1>Analysis lab — Estudios de Mercado I · Tema 8</h1><div style="font-size:10pt;color:#444;margin-bottom:3mm">${DATA?DATA.rows.length+' rows · '+DATA.headers.length+' variables':''} · ${new Date().toLocaleDateString()}</div>`;
+  LOG.forEach(it=>{h+=`<div class="v"><h3>${esc(it.title)}</h3>${it.html}</div>`;});
+  if(!LOG.length)h+='<p>No analyses run yet.</p>';$('#printout').innerHTML=h;}
+$('#pdf').onclick=()=>{buildPrintout();window.print();};
+window.addEventListener('beforeprint',()=>{if(!$('#printout').innerHTML.trim())buildPrintout();});
+
+/* ================= embedded case data ================= */
+const VEJA_CSV=`respondent,appeal_allergy_immune,try_relaxing_drink,natural_ingredients,buy_the_benefits,relevant_to_my_life,relax_no_caffeine,sustainability_local,benefits_differentiate,birch_sap_influence,alcohol_alternative,low_sugar_importance,replace_energy_drinks,brand_transparency,social_trends,fitness_importance,selfcare_routines,pay_premium,trust_new_brands,age_group,gender,income,region,buy_channel,education,ethnicity
+1,5,5,5,5,5,5,5,5,4,5,5,5,5,4,5,5,4,3,1,2,1,1,1,1,1
+2,5,5,3,5,5,5,4,4,4,5,5,5,5,5,5,5,5,4,1,2,1,1,1,2,1
+3,5,4,2,4,4,3,4,4,3,5,4,5,4,3,4,5,5,3,1,1,6,1,2,2,2
+4,4,3,4,4,3,4,4,4,4,4,4,4,4,4,4,3,2,4,1,1,2,1,1,3,2
+5,3,4,3,4,3,3,2,3,3,3,3,3,3,3,3,3,3,3,1,1,4,2,1,1,3
+6,4,4,1,5,5,1,3,5,2,4,3,4,3,3,2,3,3,2,1,1,2,2,2,2,3
+7,1,1,1,2,2,1,5,1,1,3,3,3,4,2,3,3,3,2,1,1,6,1,1,3,2
+8,3,4,4,3,3,4,3,2,3,5,1,2,3,1,3,3,2,3,1,2,1,2,2,3,3
+9,4,5,5,5,4,5,4,4,4,2,5,5,5,4,4,5,4,4,4,2,6,2,1,4,1
+10,3,3,5,4,2,1,3,4,4,5,4,5,5,1,5,5,3,3,1,1,6,2,1,2,1
+11,4,3,4,3,4,4,4,5,5,4,5,5,5,2,4,3,4,3,1,1,1,3,2,3,1
+12,5,4,5,5,5,5,4,4,4,4,5,4,5,1,5,3,4,4,4,1,6,2,1,4,1
+13,4,4,2,2,2,3,5,3,3,3,4,1,5,3,5,5,4,3,6,2,6,3,1,5,1
+14,4,3,3,4,4,3,3,3,1,5,5,1,1,1,2,2,3,2,2,1,4,2,2,3,5
+15,4,5,4,5,4,4,4,4,4,5,5,5,5,4,5,5,4,3,1,2,6,2,1,3,2
+16,5,4,1,5,4,2,4,4,3,5,5,4,4,5,3,4,2,3,1,1,1,1,2,3,2
+17,2,3,3,4,2,3,4,3,4,3,2,3,4,4,3,2,2,3,1,2,2,5,2,3,4
+18,5,5,4,5,5,5,3,3,4,3,4,4,5,3,5,5,4,3,1,2,1,1,1,3,9
+19,4,3,4,3,3,4,2,2,3,2,1,3,2,3,2,3,2,3,3,3,1,6,5,3,2
+20,4,5,1,5,3,3,5,5,4,3,5,1,5,1,2,3,4,1,1,1,1,1,1,1,2
+21,3,4,4,4,3,4,4,3,2,3,4,4,4,3,2,2,4,3,2,3,4,3,1,4,6
+22,3,4,3,2,3,4,1,1,1,1,1,1,1,1,2,1,1,1,1,3,4,3,3,1,2
+23,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,1,1,3,3,1,4
+24,4,3,4,3,3,3,4,4,4,4,5,4,5,4,5,5,5,3,4,2,4,4,1,4,1
+25,3,2,3,4,3,4,3,3,3,3,3,4,3,2,3,2,3,2,1,2,3,3,1,3,4
+26,4,2,3,2,3,2,2,3,3,2,3,4,5,5,5,4,5,4,1,2,1,4,1,2,1
+27,4,3,4,5,4,5,4,5,4,3,4,5,4,3,4,5,4,3,2,2,2,2,4,3,2
+28,4,5,4,4,4,5,3,4,4,3,4,3,2,3,5,3,4,3,1,2,3,1,1,3,2
+29,5,4,5,5,5,5,5,4,4,5,5,4,4,5,4,5,3,4,1,2,1,2,1,2,2
+30,2,2,1,3,3,2,2,2,2,1,3,3,4,2,3,3,3,2,1,1,3,1,2,1,3
+31,2,1,1,4,3,1,1,3,1,1,4,1,2,1,4,2,2,2,1,1,1,1,2,2,1
+32,5,5,4,5,4,5,4,5,5,5,5,5,5,4,5,5,5,3,1,2,1,1,1,3,7
+33,3,1,2,2,3,2,5,4,3,4,5,3,5,4,4,3,2,1,1,2,1,4,1,2,1
+34,4,5,2,4,3,1,5,3,2,3,5,5,5,2,5,5,3,2,1,2,1,5,1,1,2
+35,5,5,5,5,5,5,5,5,3,5,3,5,5,5,5,2,2,3,1,2,1,2,2,3,3
+36,5,4,5,5,4,4,5,4,4,5,5,4,5,5,4,5,4,3,4,1,5,4,1,5,1
+37,5,5,5,5,4,5,5,5,4,5,5,5,5,5,4,5,4,3,4,1,6,4,3,4,1
+38,4,3,4,4,4,4,2,3,4,3,3,3,4,5,3,3,4,3,6,1,2,4,1,4,5
+39,4,3,2,3,3,4,4,3,1,4,4,3,4,1,2,4,3,1,5,2,1,1,1,2,3
+40,4,3,2,4,4,2,4,2,1,2,2,3,4,2,3,3,3,2,1,1,2,1,1,3,7
+41,5,1,5,5,5,5,5,4,5,5,5,1,5,1,5,5,5,3,1,2,1,2,1,2,4
+42,4,4,3,4,2,4,2,4,2,4,3,5,5,3,4,3,3,4,1,2,1,2,6,2,2
+43,5,5,5,5,5,5,5,5,1,5,5,5,5,3,5,5,5,2,4,2,2,4,1,4,2
+44,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,1,1,1,1,1,1,2
+45,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,5,1,1,1,1,1,1,9
+46,5,4,3,4,3,3,4,3,3,3,4,4,4,4,4,4,4,4,1,1,2,1,1,2,9
+47,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,1,1,2,1,6,3,4
+48,2,2,3,2,1,1,3,3,3,4,1,3,4,3,3,2,4,3,1,1,1,1,1,1,2
+49,4,3,4,4,5,2,4,3,4,5,5,3,5,4,5,4,4,3,1,1,1,1,2,2,2
+50,1,1,1,1,1,1,5,5,1,3,4,2,5,3,2,1,2,1,1,1,1,1,1,3,2
+51,5,5,5,5,5,5,5,5,5,5,5,3,5,5,5,5,5,5,1,1,1,1,2,1,2
+52,4,5,2,4,4,5,4,3,4,4,5,4,3,3,5,5,3,4,1,1,1,2,1,1,4
+53,1,3,5,5,5,5,1,3,3,3,5,4,4,2,4,5,3,2,1,1,6,1,3,5,2
+54,2,5,2,4,4,4,3,4,1,3,5,5,5,3,3,4,3,4,1,1,1,1,1,2,3
+55,3,4,3,5,3,4,3,4,3,3,3,4,3,2,3,3,2,2,3,1,1,1,2,1,2
+56,4,3,4,4,2,5,4,4,4,1,4,5,5,1,3,4,4,2,1,1,2,6,1,1,8
+57,5,1,4,5,2,5,4,3,2,4,4,5,5,1,5,4,3,4,1,2,1,1,1,3,2
+58,4,4,4,3,5,2,4,4,3,1,2,4,5,2,4,4,4,3,1,1,1,5,1,1,4
+59,5,5,3,3,3,3,3,3,3,3,4,3,1,3,3,4,4,4,1,1,6,1,5,5,8
+60,3,4,5,4,5,4,5,3,1,5,5,5,5,1,5,3,4,1,2,2,1,3,2,3,2
+61,3,5,3,5,4,4,4,3,4,4,4,5,2,4,4,3,3,4,1,2,1,1,1,1,2
+62,4,2,3,4,4,3,4,3,2,1,2,4,3,4,3,2,2,3,1,1,1,4,1,2,1
+63,5,3,4,5,5,4,5,3,5,3,5,3,5,1,5,5,3,1,5,2,2,4,1,4,1
+64,5,5,4,5,5,5,5,4,3,5,5,5,5,4,5,5,4,5,4,2,5,1,1,4,2
+65,4,4,3,4,5,5,5,3,3,4,5,5,5,2,4,5,4,1,1,2,1,1,1,3,1
+66,5,3,5,3,3,5,3,3,3,5,5,5,3,1,5,5,5,4,2,1,1,4,1,2,1
+67,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,4,1,6,4,4,3,1
+68,3,2,1,4,3,3,3,3,3,3,3,3,4,2,3,3,3,2,4,1,2,2,1,2,2
+69,3,2,2,3,3,1,3,1,1,1,3,1,1,1,1,2,1,2,1,2,5,2,2,4,1
+70,5,5,5,5,4,5,4,4,3,1,3,4,4,3,4,4,5,2,5,1,6,4,2,3,2
+71,5,5,4,5,5,5,3,3,3,2,5,1,3,1,1,3,3,2,4,2,2,4,1,4,1
+72,5,5,4,5,4,3,5,3,4,4,5,5,5,1,5,5,3,3,4,1,2,4,5,3,1
+73,5,5,5,5,5,5,5,5,5,5,5,5,5,3,5,5,4,5,1,1,4,4,1,4,1
+74,4,2,4,5,4,3,4,4,5,2,5,4,5,5,5,5,5,5,1,2,1,1,1,2,2
+75,5,3,5,5,5,4,5,5,5,5,5,5,5,5,5,5,5,3,4,2,1,1,1,2,1
+76,4,2,3,3,4,2,3,2,2,3,4,2,3,2,4,4,3,2,1,2,2,4,6,4,1
+77,5,5,5,3,3,5,3,4,3,4,4,2,5,2,5,5,3,2,1,1,1,1,5,1,1`;
+</script>
+</body></html>
