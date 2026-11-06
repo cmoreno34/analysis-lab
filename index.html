@@ -117,11 +117,11 @@ pre.prompt{background:#14211b;color:#e8efe6;border-radius:10px;padding:13px;marg
 
 <div class="card" id="logCard" style="display:none">
   <h2>4 · Your results</h2>
-  <p class="hint">Each analysis you run is logged here. Copy the AI prompt to turn it into a client recommendation, or download the PDF.</p>
+  <p class="hint">Each analysis you run is logged here. Copy the AI prompt, paste it into Claude or ChatGPT and <b>attach your own business-plan project</b>: it drafts the Marketing-Mix slides (STP, product, price, distribution, communication) from your project + these results. Or download the PDF.</p>
   <div class="row">
     <span class="hint" style="align-self:center">in PDF:</span><button class="btn ghost sm" id="pdfall">all</button><button class="btn ghost sm" id="pdfnone">none</button>
     <button class="btn" id="pdf">⬇ Download PDF</button>
-    <button class="copybtn" id="copyai">copy AI "turn this into a recommendation" prompt</button>
+    <button class="copybtn" id="copyai">copy AI prompt: fill my Marketing-Mix slides</button>
     <button class="btn ghost sm" id="clearlog">Clear results</button>
   </div>
   <pre class="prompt" id="aiprompt" style="display:none"></pre>
@@ -5395,12 +5395,59 @@ $('#clearlog').onclick=()=>{LOG=[];renderLog();};
 $('#pdfall')&&($('#pdfall').onclick=()=>{LOG.forEach(it=>it.sel=true);renderLog();});
 $('#pdfnone')&&($('#pdfnone').onclick=()=>{LOG.forEach(it=>it.sel=false);renderLog();});
 function buildAIPrompt(){
-  let txt='Act as a market research analyst. Turn these statistical results from a survey into a short, client-facing set of findings and a recommendation. For each result say what it means and what it does NOT mean (no causation claims from a cross-tab or correlation; flag any unreliable chi-square). Each result starts with a line saying WHAT is compared (which variable is averaged or crossed, and which groups) — keep that explicit. Some results include a table of analyses that were NOT possible and why: list those under a separate heading \"What we could not test, and why\", in plain words, and say what data would be needed. End with one concrete decision.\n\nRESULTS:\n';
+  let txt=`Actúa como consultor/a de marketing y analista de investigación de mercados. Te adjunto MI PROYECTO DE PLAN DE NEGOCIO (archivo adjunto) y, debajo, los RESULTADOS de la encuesta que he analizado en el Analysis Lab. Tu tarea es redactar el contenido de las diapositivas de la parte de MARKETING MIX del plan, cruzando lo que dice mi proyecto con lo que demuestran los datos.
+
+REGLAS
+- Usa SOLO cifras que aparezcan en los resultados o en mi proyecto. Cita cada dato (n, %, media, p) y el nº del análisis del que sale, p. ej. “(análisis 3, p = 0,012)”.
+- Cuando falte un dato, NO lo inventes: escribe [FALTA: qué dato] y di de dónde saldría (qué pregunta de encuesta, qué herramienta o qué parte del plan financiero).
+- No afirmes causalidad a partir de tablas cruzadas o correlaciones. No uses como hallazgo un chi² marcado como no fiable ni una diferencia con p ≥ 0,05 (dilo como “no demostrado”).
+- Cada resultado indica QUÉ se compara (qué variable se promedia o se cruza y entre qué grupos): respétalo al interpretarlo.
+- Si un resultado no encaja en mi proyecto o contradice lo que planteo, dilo claramente: es lo más útil para mejorar el plan.
+- Escribe en español, en frases cortas, listas para pegar en una diapositiva.
+
+ESTRUCTURA DE DIAPOSITIVAS (sigue este orden)
+
+A · INVESTIGACIÓN DE MERCADOS → SEGMENTACIÓN, TARGETING Y POSICIONAMIENTO
+ 1. Segmentación — describe los segmentos y una buyer persona por segmento a partir de la información motivacional de la encuesta. Si hay resultados de clustering, úsalos; si no, indica que hay que hacerlo con la herramienta de clustering.
+ 2. Targeting — qué segmento(s) elijo y por qué; dimensiona cada segmento (% y n de la muestra y, si mi proyecto da el tamaño de mercado, su traducción a clientes potenciales).
+ 3. Posicionamiento (dentro del target) — cómo me perciben frente a la competencia (preguntas competitivas de la encuesta). Propón el mapa perceptual (ejes) y los datos de comparación; si no están en los resultados, remite a la herramienta de posicionamiento.
+
+B · MARKETING MIX
+ 4–5. PRODUCTO — a partir del prototipo y de la encuesta:
+   · Beneficio básico (qué necesidad resuelve).
+   · Producto real: atributos, niveles/variaciones, marca (nombre y logo).
+   · Producto aumentado: servicios adicionales.
+   Apóyate en descriptivos y tablas cruzadas. Si es un servicio puro, explica qué se adapta a cada cliente; si es exportable, cómo se adapta en espacio y tiempo.
+ 6–7. PRECIO — dos vías y su contraste:
+   · Por costes y competencia: margen de la competencia (± cálculo) con %m = (P − CTu) / P = Beneficio / Ventas; precio P = CTu / (1 − %m); CTu = coste total / unidades vendidas (en servicios, coste total de los servicios / servicios vendidos). Estos datos vienen del plan financiero de mi proyecto.
+   · Precio óptimo según la encuesta: pregunta “¿cuál es el precio máximo que estarías dispuesto/a a pagar por…?” (tramos) → distribución de la disposición a pagar y curva de demanda q(P) → P óptimo (herramienta de precios).
+   · Concluye con el precio recomendado y si cuadra con mis costes.
+ 8–9. DISTRIBUCIÓN —
+   · Mi posición en la cadena: upstream o downstream (proveedor → distribuidor → consumidor), o plataforma de dos lados (two-sided: fabricante ↔ plataforma ↔ consumidor).
+   · Tipo de canal: directo o indirecto; largo (fabricante → mayorista → minorista → consumidor) o corto (fabricante → minorista → consumidor).
+   · Evidencia de la encuesta sobre canales de compra.
+ 10–11. COMUNICACIÓN INTEGRAL —
+   · Matriz de canales offline (trade, eventos…) y online (RRSS, web…) por fase del proceso de adopción: Know → Like → Buy → Repeat → Recomendar. Marca qué canal cubre cada fase.
+   · Evidencia de la encuesta sobre vehículos de comunicación (dónde se informan / qué les genera confianza).
+   · Define cada canal de comunicación y su presupuesto → enlaza con el plan financiero.
+
+FORMATO DE SALIDA, para cada diapositiva:
+ Título (el mensaje clave como frase) · 3–5 viñetas con datos citados · gráfico o tabla sugerida · [FALTA: …] si aplica.
+Al final añade:
+ · “Lo que no pudimos analizar y por qué” — a partir de las tablas “Not … — and why” de los resultados, en palabras sencillas, y qué datos harían falta.
+ · “Coherencia con el plan” — 3 puntos donde los datos refuerzan o contradicen mi propuesta de valor, mi estrategia (análisis externo macro y micro, interno, DAFO) o mi plan financiero.
+`;
+  if(DATA){txt+='\nDICCIONARIO DE VARIABLES DE LA ENCUESTA ('+DATA.rows.length+' respuestas)\n';
+    DATA.vars.forEach(V=>{if(V.role==='id')return;let line='- '+V.label+' ['+({scale:'escala numérica',nominal:'categoría',ordinal:'categoría ordenada',ignore:'ignorada'}[V.role]||V.role)+']';
+      if(V.codes&&V.role!=='scale'){const ks=Object.keys(V.codes);if(ks.length&&ks.length<=12)line+=': '+ks.map(k=>k+' = '+V.codes[k]).join('; ');}
+      txt+=line+'\n';});}
+  txt+='\nRESULTADOS:\n';
   LOG.forEach((it,i)=>{const t=document.createElement('div');t.innerHTML=it.html;txt+=`\n${i+1}. ${it.title}\n${t.innerText.replace(/\n{2,}/g,'\n').trim()}\n`;});
+  if(!LOG.length)txt+='\n(Aún no hay resultados: ejecuta “Run ALL analyses” antes de copiar el prompt.)\n';
   return txt;
 }
 $('#copyai').onclick=e=>{const p=buildAIPrompt();$('#aiprompt').textContent=p;$('#aiprompt').style.display='';
-  navigator.clipboard&&navigator.clipboard.writeText(p).then(()=>{e.target.textContent='copied ✓';setTimeout(()=>e.target.textContent='copy AI "turn this into a recommendation" prompt',1300);}).catch(()=>{});};
+  navigator.clipboard&&navigator.clipboard.writeText(p).then(()=>{e.target.textContent='copied ✓';setTimeout(()=>e.target.textContent='copy AI prompt: fill my Marketing-Mix slides',1300);}).catch(()=>{});};
 function buildPrintout(){let h=`<h1>Analysis lab — Estudios de Mercado I · Tema 8</h1><div style="font-size:10pt;color:#444;margin-bottom:3mm">${DATA?DATA.rows.length+' rows · '+DATA.headers.length+' variables':''} · ${new Date().toLocaleDateString()}</div>`;
   const _sel=LOG.filter(it=>it.sel!==false);_sel.forEach(it=>{h+=`<div class="v"><h3>${esc(it.title)}</h3>${it.html}</div>`;});
   if(!_sel.length)h+='<p>Nothing selected for the PDF — tick the “in PDF” boxes next to the results you want.</p>';$('#printout').innerHTML=h;}
