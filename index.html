@@ -156,8 +156,8 @@ function sig(p){return p<0.05?'statistically significant (p '+(p<0.001?'< 0.001'
 
 /* ================= data model ================= */
 let DATA=null;   // {vars:[{name,label,role,type,codes}], rows:[{name:val}]}
-const DEMO=/age|gender|sex|region|income|channel|educ|ethnic|country|city|zone|segment|cluster|group$/i;
-function pretty(n){return n.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());}
+const DEMO=/age|gender|sex|region|income|channel|educ|ethnic|country|city|zone|segment|cluster|group$|sexo|g[eé]nero|regi[oó]n|canal|provincia|ciudad|zona|segmento|nombre|residencia|estudios|ocupaci[oó]n|pa[ií]s|relaci[oó]n/i;
+function pretty(n){n=String(n);if(/\s/.test(n.trim()))return n.trim();return n.replace(/_/g,' ').replace(/(^|\s)(\S)/g,(m,a,c)=>a+c.toUpperCase());}
 function detect(col,name){
   const ne=col.filter(v=>v!==''&&v!=null);
   if(/^(id|respondent|resp|record|#)/i.test(name))return{role:'id',type:'id'};
@@ -5329,30 +5329,36 @@ function crosstab(){
   $('#c_out').innerHTML=h;logIt('Cross-tab — '+v(rn).label+' × '+v(cn).label,h);
 }
 render.ttest=()=>{
-  $('#panel').innerHTML=`<div class="row"><div><label class="fl">Scale to compare</label><select id="t_s">${opts(['scale'])}</select></div>
-    <div><label class="fl">Group variable (pick 2 groups)</label><select id="t_g">${opts(['nominal','ordinal'])}</select></div>
+  const nS=DATA.vars.filter(V=>V.role==='scale').length,nG=DATA.vars.filter(V=>V.role==='nominal'||V.role==='ordinal').length;
+  if(!nS||!nG){$('#panel').innerHTML='<div class="verdict bad"><b>A t-test is not possible yet.</b> It compares the AVERAGE of a Scale variable between two groups of a Category variable. '+(!nS?'This file has no Scale variable (nothing to average). ':'')+(!nG?'This file has no Category variable (no groups to compare). ':'')+'Fix the Role column in section 2 · Variables'+(_textScaleNotes().length?' — note: '+_textScaleNotes().map(n=>esc(n.v)).join(', ')+' look like rating scales stored as words; recode them to numbers in the Excel.':'.')+'</div>';return;}
+  $('#panel').innerHTML=`<p class="hint" style="margin:0 0 6px"><b>What a t-test compares:</b> the <b>mean</b> of one <b>Scale</b> variable (left) between <b>two groups</b> of one <b>Category</b> variable (right). Example: average “intention to buy” for people who work vs people who do not.</p><div class="row"><div><label class="fl">Scale to compare (what is averaged)</label><select id="t_s">${opts(['scale'])}</select></div>
+    <div><label class="fl">Group variable (who is compared — pick 2 groups)</label><select id="t_g">${opts(['nominal','ordinal'])}</select></div>
     <button class="btn sm" id="t_next" style="align-self:flex-end">Next</button></div><div id="t_groups"></div><div id="t_out"></div>`;
-  $('#t_next').onclick=()=>{const gn=$('#t_g').value;const ks=[...new Set(colVals(gn,true))].sort((a,b)=>a-b);
-    $('#t_groups').innerHTML=`<div class="row"><div><label class="fl">Group A</label><select id="t_a">${ks.map(k=>`<option value="${k}">${esc(labelOf(gn,k))}</option>`).join('')}</select></div>
-      <div><label class="fl">Group B</label><select id="t_b">${ks.map((k,i)=>`<option value="${k}" ${i==1?'selected':''}>${esc(labelOf(gn,k))}</option>`).join('')}</select></div>
+  $('#t_next').onclick=()=>{const gn=$('#t_g').value;const f=_counts(gn);const ks=Object.keys(f).sort((a,b)=>a-b);
+    if(ks.length<2){$('#t_groups').innerHTML='<div class="verdict bad">“'+esc(v(gn).label)+'” cannot split people into two groups: '+_groupProblem(v(gn),2)+'</div>';return;}
+    $('#t_groups').innerHTML=`<div class="row"><div><label class="fl">Group A</label><select id="t_a">${ks.map(k=>`<option value="${k}">${esc(labelOf(gn,k))} (n=${f[k]})</option>`).join('')}</select></div>
+      <div><label class="fl">Group B</label><select id="t_b">${ks.map((k,i)=>`<option value="${k}" ${i==1?'selected':''}>${esc(labelOf(gn,k))} (n=${f[k]})</option>`).join('')}</select></div>
       <button class="btn sm" id="t_go" style="align-self:flex-end">Run t-test</button></div>`;
     $('#t_go').onclick=ttest;};
 };
 function ttest(){
-  const sn=$('#t_s').value,gn=$('#t_g').value,ga=$('#t_a').value,gb=$('#t_b').value;
-  if(ga===gb){$('#t_out').innerHTML='<p class="warnmsg">Pick two different groups.</p>';return;}
-  const A=[],B=[];DATA.rows.forEach(r=>{const g=String(r[gn]),s=Number(r[sn]);if(isNaN(s)||r[sn]==='')return;if(g===String(ga))A.push(s);else if(g===String(gb))B.push(s);});
-  if(A.length<2||B.length<2){$('#t_out').innerHTML='<p class="warnmsg">Not enough data in one of the groups.</p>';return;}
+  const sn=$('#t_s').value,gn=$('#t_g').value,ga=$('#t_a').value,gb=$('#t_b').value;const S=v(sn),G=v(gn);
+  if(ga===gb){$('#t_out').innerHTML='<p class="warnmsg">Pick two different groups — a group compared with itself always gives a difference of 0.</p>';return;}
+  const A=[],B=[];let blankA=0,blankB=0;DATA.rows.forEach(r=>{const g=String(r[gn]),s=Number(r[sn]);const blank=(r[sn]===''||r[sn]==null||isNaN(s));if(g===String(ga)){blank?blankA++:A.push(s);}else if(g===String(gb)){blank?blankB++:B.push(s);}});
+  const la=esc(labelOf(gn,ga)),lb=esc(labelOf(gn,gb));
+  let what=`<div class="verdict"><b>What is compared:</b> the average of <b>${esc(S.label)}</b> for people whose <b>${esc(G.label)}</b> is “${la}” versus “${lb}” (independent-samples t-test, two-tailed). ${blankA+blankB?(blankA+blankB)+' person(s) in these groups left “'+esc(S.label)+'” blank and are not counted. ':''}Other groups of ${esc(G.label)} are not part of this test.</div>`;
+  if(A.length<2||B.length<2){$('#t_out').innerHTML=what+`<div class="verdict bad"><b>Not possible:</b> “${la}” has ${A.length} valid answer(s) and “${lb}” has ${B.length}. Each group needs at least 2 (better ≥5) to estimate its spread. Pick bigger groups, merge categories, or collect more answers.</div>`;logIt('t-test — '+S.label+' by '+G.label+' (not possible)',$('#t_out').innerHTML);return;}
   const mA=mean(A),mB=mean(B),vA=variance(A),vB=variance(B),nA=A.length,nB=B.length;
+  if(vA===0&&vB===0){$('#t_out').innerHTML=what+`<div class="verdict bad"><b>Not possible:</b> every person in “${la}” answered ${mA} and every person in “${lb}” answered ${mB}. With no variation inside the groups the t statistic cannot be computed. ${mA===mB?'There is simply no difference to test.':'Describe the difference in words instead.'}</div>`;logIt('t-test — '+S.label+' by '+G.label+' (not possible)',$('#t_out').innerHTML);return;}
   const sp=Math.sqrt(((nA-1)*vA+(nB-1)*vB)/(nA+nB-2)),se=sp*Math.sqrt(1/nA+1/nB);
   const t=(mA-mB)/se,df=nA+nB-2,p=tP(t,df),d=(mA-mB)/sp;
-  let h=`<table class="t"><tr><th>Group</th><th>n</th><th>Mean</th><th>SD</th></tr>
-    <tr><td>${esc(labelOf(gn,ga))}</td><td>${nA}</td><td class="hi">${mA.toFixed(2)}</td><td>${sd(A).toFixed(2)}</td></tr>
-    <tr><td>${esc(labelOf(gn,gb))}</td><td>${nB}</td><td class="hi">${mB.toFixed(2)}</td><td>${sd(B).toFixed(2)}</td></tr></table>`;
+  let h=what+`<table class="t"><tr><th>Group</th><th>n</th><th>Mean</th><th>SD</th></tr>
+    <tr><td>${la}</td><td>${nA}</td><td class="hi">${mA.toFixed(2)}</td><td>${sd(A).toFixed(2)}</td></tr>
+    <tr><td>${lb}</td><td>${nB}</td><td class="hi">${mB.toFixed(2)}</td><td>${sd(B).toFixed(2)}</td></tr></table>`;
   h+=`<div><span class="stat"><b>${(mA-mB).toFixed(2)}</b><span>Mean diff</span></span><span class="stat"><b>${t.toFixed(2)}</b><span>t</span></span><span class="stat"><b>${df}</b><span>df</span></span><span class="stat"><b>${pfmt(p)}</b><span>p-value</span></span><span class="stat"><b>${Math.abs(d).toFixed(2)}</b><span>Cohen's d</span></span></div>`;
   const dsz=Math.abs(d)<0.2?'negligible':Math.abs(d)<0.5?'small':Math.abs(d)<0.8?'medium':'large';
-  h+=`<div class="verdict ${p<0.05?'':'bad'}">${esc(v(sn).label)} is ${mA>mB?'higher':'lower'} for <b>${esc(labelOf(gn,ga))}</b> (${mA.toFixed(2)}) than <b>${esc(labelOf(gn,gb))}</b> (${mB.toFixed(2)}). The difference is ${sig(p)}. Effect size d = ${Math.abs(d).toFixed(2)} (${dsz}). ${p<0.05?'Real and '+(dsz==='negligible'||dsz==='small'?'but small — ask if it is big enough to act on.':'worth acting on.'):'Could easily be chance — do not build a decision on it.'}</div>`;
-  $('#t_out').innerHTML=h;logIt('t-test — '+v(sn).label+' by '+v(gn).label,h);
+  h+=`<div class="verdict ${p<0.05?'':'bad'}">${esc(S.label)} is ${mA>mB?'higher':'lower'} for <b>${la}</b> (${mA.toFixed(2)}) than <b>${lb}</b> (${mB.toFixed(2)}). The difference is ${sig(p)}. Effect size d = ${Math.abs(d).toFixed(2)} (${dsz}). ${p<0.05?'Real and '+(dsz==='negligible'||dsz==='small'?'but small — ask if it is big enough to act on.':'worth acting on.'):'Could easily be chance — do not build a decision on it.'}${(nA<5||nB<5)?' ⚠ One group has fewer than 5 people, so treat this result with great caution.':''}</div>`;
+  $('#t_out').innerHTML=h;logIt('t-test — '+S.label+' by '+G.label,h);
 }
 render.corr=()=>{
   $('#panel').innerHTML=`<div class="row"><div><label class="fl">Scale X</label><select id="r_x">${opts(['scale'])}</select></div>
@@ -5389,7 +5395,7 @@ $('#clearlog').onclick=()=>{LOG=[];renderLog();};
 $('#pdfall')&&($('#pdfall').onclick=()=>{LOG.forEach(it=>it.sel=true);renderLog();});
 $('#pdfnone')&&($('#pdfnone').onclick=()=>{LOG.forEach(it=>it.sel=false);renderLog();});
 function buildAIPrompt(){
-  let txt='Act as a market research analyst. Turn these statistical results from a survey into a short, client-facing set of findings and a recommendation. For each result say what it means and what it does NOT mean (no causation claims from a cross-tab or correlation; flag any unreliable chi-square). End with one concrete decision.\n\nRESULTS:\n';
+  let txt='Act as a market research analyst. Turn these statistical results from a survey into a short, client-facing set of findings and a recommendation. For each result say what it means and what it does NOT mean (no causation claims from a cross-tab or correlation; flag any unreliable chi-square). Each result starts with a line saying WHAT is compared (which variable is averaged or crossed, and which groups) — keep that explicit. Some results include a table of analyses that were NOT possible and why: list those under a separate heading \"What we could not test, and why\", in plain words, and say what data would be needed. End with one concrete decision.\n\nRESULTS:\n';
   LOG.forEach((it,i)=>{const t=document.createElement('div');t.innerHTML=it.html;txt+=`\n${i+1}. ${it.title}\n${t.innerText.replace(/\n{2,}/g,'\n').trim()}\n`;});
   return txt;
 }
@@ -5408,30 +5414,76 @@ function _catsFor(){return DATA.vars.filter(V=>{if(V.role!=='nominal'&&V.role!==
 function _abbr(s){s=String(s);return s.length>16?s.slice(0,15)+'…':s;}
 function _corrPair(xn,yn){const xs=[],ys=[];DATA.rows.forEach(r=>{const x=Number(r[xn]),y=Number(r[yn]);if(r[xn]===''||r[yn]===''||isNaN(x)||isNaN(y))return;xs.push(x);ys.push(y);});const n=xs.length;if(n<3)return{r:NaN,p:NaN,n};const mx=mean(xs),my=mean(ys);let sxy=0,sxx=0,syy=0;for(let i=0;i<n;i++){sxy+=(xs[i]-mx)*(ys[i]-my);sxx+=(xs[i]-mx)**2;syy+=(ys[i]-my)**2;}const r=sxy/Math.sqrt(sxx*syy);if(!isFinite(r))return{r:NaN,p:NaN,n};const t=r*Math.sqrt((n-2)/(1-r*r)),p=tP(t,n-2);return{r,p,n};}
 function _crossPair(rn,cn){const pairs=DATA.rows.map(r=>[r[rn],r[cn]]).filter(p=>p[0]!==''&&p[1]!==''&&p[0]!=null&&p[1]!=null);if(pairs.length<4)return null;const rk=[...new Set(pairs.map(p=>p[0]))].sort((a,b)=>a-b),ck=[...new Set(pairs.map(p=>p[1]))].sort((a,b)=>a-b);if(rk.length<2||ck.length<2)return null;const O={};rk.forEach(r=>{O[r]={};ck.forEach(c=>O[r][c]=0);});pairs.forEach(p=>O[p[0]][p[1]]++);const rt={},ct={};let N=0;rk.forEach(r=>{rt[r]=0;ck.forEach(c=>rt[r]+=O[r][c]);N+=rt[r];});ck.forEach(c=>{ct[c]=0;rk.forEach(r=>ct[c]+=O[r][c]);});let chi=0,low=0;rk.forEach(r=>ck.forEach(c=>{const E=rt[r]*ct[c]/N;if(E<5)low++;chi+=(O[r][c]-E)**2/E;}));const df=(rk.length-1)*(ck.length-1),p=chi2p(chi,df),V=Math.sqrt(chi/(N*Math.min(rk.length-1,ck.length-1)));return{chi,df,p,V,low,N};}
-function runAllDesc(){const sc=_scalesFor(),ca=_catsFor();let h='';
-  if(sc.length){h+='<table class="t"><tr><th>Scale variable</th><th>n</th><th>Mean</th><th>Median</th><th>SD</th><th>Min</th><th>Max</th></tr>';sc.forEach(V=>{const a=colVals(V.name,true);if(!a.length)return;h+=`<tr><td style="text-align:left">${esc(V.label)}</td><td>${a.length}</td><td class="hi">${mean(a).toFixed(2)}</td><td>${median(a).toFixed(1)}</td><td>${sd(a).toFixed(2)}</td><td>${Math.min(...a)}</td><td>${Math.max(...a)}</td></tr>`;});h+='</table>';}
+/* ---- explanations: what each analysis compares, and what could not be run (and why) ---- */
+const _LIKERT_TXT=/acuerdo|desacuerdo|probable|improbable|importante|mejor|peor|nada|poco|mucho|bastante|muy|agree|disagree|likely|unlikely|important|satisf|never|always|nunca|siempre|atractiv|dispuest|útil|util/i;
+function _looksLikeTextScale(V){if(V.type!=='text')return false;const d=[...new Set(DATA.rows.map(r=>r[V.name]).filter(x=>x!==''&&x!=null))];return d.length>=3&&d.length<=11&&d.filter(x=>_LIKERT_TXT.test(String(x))).length>=Math.ceil(d.length*0.6);}
+function _counts(name){const f={};colVals(name,true).forEach(x=>f[x]=(f[x]||0)+1);return f;}
+function _sdOK(name){const a=colVals(name,true);return a.length>=2&&variance(a)>0;}
+function _textScaleNotes(){const L=DATA.vars.filter(_looksLikeTextScale);if(!L.length)return[];const ex=String(DATA.rows.map(r=>r[L[0].name]).find(x=>x!==''&&x!=null));return[{v:L.length+' variable(s) with rating scales written as words: '+L.map(V=>V.label).slice(0,8).join(' · ')+(L.length>8?' · …':''),why:'Answers such as “'+esc(ex)+'” are words, so the lab reads them as unordered categories: they cannot be averaged, correlated or compared with a t-test. Recode the words to numbers (1–5 / 1–7) in the Excel and load it again.'}];}
+function _groupProblem(G,minN){const f=_counts(G.name),ks=Object.keys(f);
+  if(!ks.length)return'it has no answers (every cell is blank).';
+  if(ks.length<2)return'everyone gave the same answer (“'+esc(labelOf(G.name,ks[0]))+'”), so there are no two groups to compare.';
+  if(ks.length>12)return'it has '+ks.length+' different values — too many to use as groups. Bin it into 2–5 groups first (section 2 · Variables).';
+  const top=ks.sort((x,y)=>f[y]-f[x]);if(f[top[1]]<minN)return'its two largest groups are “'+esc(labelOf(G.name,top[0]))+'” (n='+f[top[0]]+') and “'+esc(labelOf(G.name,top[1]))+'” (n='+f[top[1]]+'); each needs at least '+minN+' people for a usable test.';
+  return null;}
+function _notesHTML(title,list){if(!list.length)return'';let h='<div class="verdict bad" style="margin-top:10px"><b>'+title+'</b><table class="t" style="margin-top:6px"><tr><th style="text-align:left">Variable / comparison</th><th style="text-align:left">Why it was not analysed</th></tr>';
+  list.forEach(n=>{h+='<tr><td style="text-align:left">'+esc(n.v)+'</td><td style="text-align:left">'+n.why+'</td></tr>';});return h+'</table></div>';}
+function _roleNotes(){return DATA.vars.filter(V=>V.role==='id'||V.role==='ignore').map(V=>({v:V.label,why:V.role==='id'?'Role is ID (one value per person) — identifiers are never analysed.':'Role set to Ignore — left out on purpose.'}));}
+
+function runAllDesc(){const sc=_scalesFor(),cats=DATA.vars.filter(V=>V.role==='nominal'||V.role==='ordinal'),ca=_catsFor();let h='';const notes=[];
+  h+='<div class="verdict"><b>What this does:</b> one line per variable. <b>Scale</b> variables (numbers you can average) get n, mean, median, SD, min and max. <b>Category</b> variables get their number of groups and the most common answer. n counts only non-blank answers.</div>';
+  if(sc.length){h+='<table class="t"><tr><th>Scale variable</th><th>n</th><th>Mean</th><th>Median</th><th>SD</th><th>Min</th><th>Max</th></tr>';sc.forEach(V=>{const a=colVals(V.name,true);if(!a.length){notes.push({v:V.label,why:'Marked as Scale but has no numeric answers (all blank or text).'});return;}h+=`<tr><td style="text-align:left">${esc(V.label)}</td><td>${a.length}</td><td class="hi">${mean(a).toFixed(2)}</td><td>${median(a).toFixed(1)}</td><td>${a.length>1?sd(a).toFixed(2):'—'}</td><td>${Math.min(...a)}</td><td>${Math.max(...a)}</td></tr>`;});h+='</table>';}
   if(ca.length){h+='<table class="t" style="margin-top:8px"><tr><th>Category variable</th><th>n</th><th>#cats</th><th>Most common</th></tr>';ca.forEach(V=>{const a=colVals(V.name,true);if(!a.length)return;const f={};a.forEach(x=>f[x]=(f[x]||0)+1);const top=Object.keys(f).sort((x,y)=>f[y]-f[x])[0];h+=`<tr><td style="text-align:left">${esc(V.label)}</td><td>${a.length}</td><td>${Object.keys(f).length}</td><td>${esc(labelOf(V.name,top))} (${(100*f[top]/a.length).toFixed(0)}%)</td></tr>`;});h+='</table>';}
+  cats.filter(V=>ca.indexOf(V)<0).forEach(V=>{const k=Object.keys(_counts(V.name)).length;notes.push({v:V.label,why:k<2?'Only one answer (or none) — nothing to tabulate.':'It has '+k+' different answers — too many for a frequency table (likely free text or a number). Set it to Scale if it is a number, bin it, or set it to Ignore.'});});
   h+='<div class="verdict">A snapshot of every variable. Scales get a mean (and watch mean vs median for skew); categories get their shares. This is where every project starts.</div>';
+  h+=_notesHTML('Not described — and why',notes.concat(_roleNotes()));
   logIt('Describe — all variables',h);}
-function runAllCorr(){const sc=_scalesFor();if(sc.length<2){logIt('Correlation matrix',' <div class="verdict">Need at least two scale variables.</div>');return;}
-  let h='<div style="overflow:auto"><table class="t"><tr><th></th>'+sc.map(V=>`<th title="${esc(V.label)}">${esc(_abbr(V.label))}</th>`).join('')+'</tr>';
-  sc.forEach((Vi,i)=>{h+=`<tr><td style="text-align:left"><b>${esc(_abbr(Vi.label))}</b></td>`;sc.forEach((Vj,j)=>{if(j>i){h+='<td style="color:#ccc">·</td>';return;}if(i===j){h+='<td class="hi">1</td>';return;}const{r,p}=_corrPair(Vi.name,Vj.name);if(isNaN(r)){h+='<td>—</td>';return;}const star=p<0.01?'**':p<0.05?'*':'';h+=`<td class="${p<0.05?'hi':''}" title="p=${pfmt(p)}">${r.toFixed(2)}${star}</td>`;});h+='</tr>';});
-  h+='</table></div><div class="verdict">Pearson r for every pair of scale variables (lower triangle). <b>*</b> p&lt;.05, <b>**</b> p&lt;.01, two-tailed. r near 0 = no linear link; the sign is the direction; r² (=r×r) is the share of variance shared. Correlation is not causation.</div>';
+
+function runAllCorr(){const sc=_scalesFor();
+  const intro='<div class="verdict"><b>What this compares:</b> every pair of <b>Scale</b> variables, two at a time, using the people who answered both (Pearson r). It asks: when one goes up, does the other tend to go up (r&gt;0) or down (r&lt;0)?</div>';
+  if(sc.length<2){logIt('Correlation matrix — all scale variables',intro+_notesHTML('Correlation not possible — and why',[{v:'Whole analysis',why:'A correlation needs at least two Scale variables; this file has '+sc.length+'. '+(_textScaleNotes().length?'Some rating scales are stored as words — see below.':'Check the Role column in section 2.')}].concat(_textScaleNotes())));return;}
+  const notes=[];sc.forEach(V=>{const a=colVals(V.name,true);if(a.length<3)notes.push({v:V.label,why:'Only '+a.length+' answers — a correlation needs at least 3 people. Shown as “—”.'});else if(!_sdOK(V.name))notes.push({v:V.label,why:'Everyone gave the same value ('+a[0]+'), so it cannot vary with anything. Shown as “—”.'});});
+  let h=intro+'<div style="overflow:auto"><table class="t"><tr><th></th>'+sc.map(V=>`<th title="${esc(V.label)}">${esc(_abbr(V.label))}</th>`).join('')+'</tr>';
+  sc.forEach((Vi,i)=>{h+=`<tr><td style="text-align:left"><b>${esc(_abbr(Vi.label))}</b></td>`;sc.forEach((Vj,j)=>{if(j>i){h+='<td style="color:#ccc">·</td>';return;}if(i===j){h+='<td class="hi">1</td>';return;}const{r,p,n}=_corrPair(Vi.name,Vj.name);if(isNaN(r)){h+='<td title="not computable">—</td>';if(!notes.some(x=>x.v===Vi.label||x.v===Vj.label))notes.push({v:Vi.label+' × '+Vj.label,why:n<3?'Only '+n+' people answered both (need ≥3).':'No variation among the '+n+' people who answered both.'});return;}const star=p<0.01?'**':p<0.05?'*':'';h+=`<td class="${p<0.05?'hi':''}" title="${esc(Vi.label)} × ${esc(Vj.label)} · n=${n} · p=${pfmt(p)}">${r.toFixed(2)}${star}</td>`;});h+='</tr>';});
+  h+='</table></div><div class="verdict">Pearson r for every pair of scale variables (lower triangle; hover a cell to see the pair, n and p). <b>*</b> p&lt;.05, <b>**</b> p&lt;.01, two-tailed. r near 0 = no linear link; the sign is the direction; r² (=r×r) is the share of variance shared. Correlation is not causation.</div>';
+  h+=_notesHTML('Not correlated — and why',notes.concat(_textScaleNotes()));
   logIt('Correlation matrix — all scale variables',h);}
-function runAllCross(){const ca=_catsFor();if(ca.length<2){logIt('Cross-tabs + chi²','<div class="verdict">Need at least two category variables.</div>');return;}
-  let rows=[];for(let i=0;i<ca.length;i++)for(let j=i+1;j<ca.length;j++){const res=_crossPair(ca[i].name,ca[j].name);if(res)rows.push(Object.assign({a:ca[i].label,b:ca[j].label},res));}
+
+function runAllCross(){const cats=DATA.vars.filter(V=>V.role==='nominal'||V.role==='ordinal'),ca=_catsFor();const notes=[];
+  const intro='<div class="verdict"><b>What this compares:</b> every pair of <b>Category</b> variables in a cross-table, with a chi² test. It asks: is the share of people in each answer of one variable different across the groups of the other?</div>';
+  cats.filter(V=>ca.indexOf(V)<0).forEach(V=>{const k=Object.keys(_counts(V.name)).length;notes.push({v:V.label,why:k<2?'Only one answer (or none) — a cross-tab needs at least 2 groups.':'It has '+k+' different answers — too many groups for a cross-tab (each cell would hold 0–1 people). Bin or recode it into fewer groups.'});});
+  if(ca.length<2){logIt('Cross-tabs + chi² — all category pairs',intro+_notesHTML('Cross-tabs not possible — and why',[{v:'Whole analysis',why:'Needs at least two usable Category variables (2–12 groups each); this file has '+ca.length+'.'}].concat(notes)));return;}
+  let rows=[];for(let i=0;i<ca.length;i++)for(let j=i+1;j<ca.length;j++){const res=_crossPair(ca[i].name,ca[j].name);if(res)rows.push(Object.assign({a:ca[i].label,b:ca[j].label},res));else notes.push({v:ca[i].label+' × '+ca[j].label,why:'Among the people who answered both, fewer than 4 remain or one variable has a single answer — no table can be tested.'});}
   rows.sort((x,y)=>(x.low-y.low)||(x.p-y.p));
-  let h='<div style="overflow:auto"><table class="t"><tr><th>Pair of categories</th><th>N</th><th>chi²</th><th>df</th><th>p</th><th>Cramér V</th><th>Reliable?</th></tr>';
+  let h=intro+'<div style="overflow:auto"><table class="t"><tr><th>Pair of categories</th><th>N</th><th>chi²</th><th>df</th><th>p</th><th>Cramér V</th><th>Reliable?</th></tr>';
   rows.forEach(R=>{h+=`<tr><td style="text-align:left">${esc(R.a)} × ${esc(R.b)}</td><td>${R.N}</td><td>${R.chi.toFixed(1)}</td><td>${R.df}</td><td class="${R.p<0.05&&R.low===0?'hi':''}">${pfmt(R.p)}</td><td>${R.V.toFixed(2)}</td><td>${R.low>0?'⚠ no ('+R.low+' exp&lt;5)':'yes'}</td></tr>`;});
-  h+='</table></div><div class="verdict">Every pair of categorical variables, chi² test of independence (sorted: reliable &amp; significant first). Rows flagged ⚠ have expected counts below 5 — NOT a valid finding (collapse categories). A reliable, significant row means the two are associated, never that one causes the other.</div>';
+  h+='</table></div><div class="verdict">Every pair of categorical variables, chi² test of independence (sorted: reliable &amp; significant first). Rows flagged ⚠ have expected counts below 5 — NOT a valid finding, because with so few people per cell chi² is not trustworthy (collapse categories or collect more answers). A reliable, significant row means the two are associated, never that one causes the other.</div>';
+  h+=_notesHTML('Not cross-tabulated — and why',notes);
   logIt('Cross-tabs + chi² — all category pairs',h);}
-function runAllT(){const sc=_scalesFor(),ca=_catsFor();if(!sc.length||!ca.length){logIt('t-tests','<div class="verdict">Need at least one scale and one category variable.</div>');return;}
-  let rows=[];ca.forEach(G=>{const a=colVals(G.name,true);const f={};a.forEach(x=>f[x]=(f[x]||0)+1);const top2=Object.keys(f).sort((x,y)=>f[y]-f[x]).slice(0,2);if(top2.length<2||f[top2[0]]<5||f[top2[1]]<5)return;const ga=top2[0],gb=top2[1];
-    sc.forEach(S=>{const A=[],B=[];DATA.rows.forEach(r=>{const s=Number(r[S.name]);if(r[S.name]===''||isNaN(s))return;const g=String(r[G.name]);if(g===String(ga))A.push(s);else if(g===String(gb))B.push(s);});if(A.length<2||B.length<2)return;const mA=mean(A),mB=mean(B),vA=variance(A),vB=variance(B),nA=A.length,nB=B.length;const sp=Math.sqrt(((nA-1)*vA+(nB-1)*vB)/(nA+nB-2)),se=sp*Math.sqrt(1/nA+1/nB);const t=(mA-mB)/se,df=nA+nB-2,p=tP(t,df),d=(mA-mB)/sp;if(!isFinite(t))return;rows.push({s:S.label,g:esc(G.label)+' ('+esc(labelOf(G.name,ga))+' vs '+esc(labelOf(G.name,gb))+')',mA,mB,t,df,p,d});});});
+
+function runAllT(){const sc=_scalesFor(),cats=DATA.vars.filter(V=>V.role==='nominal'||V.role==='ordinal');const MIN=5;const notes=[],skip={};
+  const intro='<div class="verdict"><b>What this compares:</b> each row is an <b>independent-samples t-test</b> (two-tailed, pooled variance). It takes ONE <b>Scale</b> variable (the thing being averaged) and ONE <b>Category</b> variable (who is being compared), and compares the <b>mean of the scale</b> between the <b>two largest groups</b> of that category. Read a row as: “Do people in group A give a higher or lower average on this scale than people in group B?”. Smaller groups of that category are left out, and blanks on the scale are not counted.</div>';
+  if(!sc.length||!cats.length){const n=[];if(!sc.length)n.push({v:'Scale to compare',why:'No variable has role Scale. A t-test compares AVERAGES, so it needs at least one number you can average (a 1–5 / 1–7 rating, euros, age…).'});if(!cats.length)n.push({v:'Groups to compare',why:'No variable has role Category, so there is nothing to split people into two groups (e.g. sex, works yes/no, age band).'});logIt('t-tests — every scale by every 2-group split',intro+_notesHTML('t-tests not possible — and why',n.concat(_textScaleNotes())));return;}
+  let rows=[];
+  cats.forEach(G=>{const why=_groupProblem(G,MIN);if(why){notes.push({v:G.label+' (as groups)',why:'Cannot be used to split people: '+why});return;}
+    const f=_counts(G.name),ks=Object.keys(f).sort((x,y)=>f[y]-f[x]),ga=ks[0],gb=ks[1],left=ks.slice(2);
+    const leftTxt=left.length?' · left out: '+left.map(k=>esc(labelOf(G.name,k))+' (n='+f[k]+')').join(', '):'';
+    sc.forEach(S=>{const A=[],B=[];DATA.rows.forEach(r=>{const s=Number(r[S.name]);if(r[S.name]===''||r[S.name]==null||isNaN(s))return;const g=String(r[G.name]);if(g===String(ga))A.push(s);else if(g===String(gb))B.push(s);});
+      const key=G.label;skip[key]=skip[key]||[];
+      if(A.length<2||B.length<2){skip[key].push({s:S.label,why:'only '+A.length+' and '+B.length+' valid answers in the two groups (need ≥2 each; blanks do not count)'});return;}
+      const mA=mean(A),mB=mean(B),vA=variance(A),vB=variance(B),nA=A.length,nB=B.length;
+      if(vA===0&&vB===0){skip[key].push({s:S.label,why:mA===mB?'everyone in both groups gave the same answer ('+mA+') — there is no variation and nothing to test':'each group answered with a single value ('+mA+' vs '+mB+'), so there is no within-group variation and t cannot be computed'});return;}
+      const sp=Math.sqrt(((nA-1)*vA+(nB-1)*vB)/(nA+nB-2)),se=sp*Math.sqrt(1/nA+1/nB);const t=(mA-mB)/se,df=nA+nB-2,p=tP(t,df),d=(mA-mB)/sp;if(!isFinite(t)){skip[key].push({s:S.label,why:'the result is not a finite number (no variation)'});return;}
+      rows.push({s:S.label,g:'<b>'+esc(G.label)+'</b>: '+esc(labelOf(G.name,ga))+' vs '+esc(labelOf(G.name,gb))+'<span style="color:var(--soft);font-size:11px">'+leftTxt+'</span>',a:esc(labelOf(G.name,ga)),b:esc(labelOf(G.name,gb)),nA,nB,mA,mB,t,df,p,d});});});
   rows.sort((x,y)=>x.p-y.p);
-  let h='<div style="overflow:auto"><table class="t"><tr><th>Scale</th><th>Split (2 largest groups)</th><th>Mean A</th><th>Mean B</th><th>t</th><th>df</th><th>p</th><th>d</th></tr>';
-  rows.forEach(R=>{h+=`<tr><td style="text-align:left">${esc(R.s)}</td><td style="text-align:left">${R.g}</td><td>${R.mA.toFixed(2)}</td><td>${R.mB.toFixed(2)}</td><td>${R.t.toFixed(2)}</td><td>${R.df}</td><td class="${R.p<0.05?'hi':''}">${pfmt(R.p)}</td><td>${Math.abs(R.d).toFixed(2)}</td></tr>`;});
-  h+='</table></div><div class="verdict">Every scale compared across the two largest groups of each category (sorted by p). <b>Bold p&lt;.05</b> = a real mean gap; read Cohen’s d for size (0.2 small · 0.5 medium · 0.8 large). Significant is not the same as large.</div>';
+  let h=intro;
+  if(rows.length){h+='<div style="overflow:auto"><table class="t"><tr><th>Scale (what is averaged)</th><th>Groups compared (A vs B)</th><th>n A</th><th>Mean A</th><th>n B</th><th>Mean B</th><th>t</th><th>df</th><th>p</th><th>d</th><th style="text-align:left">In words</th></tr>';
+    rows.forEach(R=>{const dz=Math.abs(R.d)<0.2?'negligible':Math.abs(R.d)<0.5?'small':Math.abs(R.d)<0.8?'medium':'large';const words=R.p<0.05?R.a+' scores '+(R.mA>R.mB?'higher':'lower')+' than '+R.b+' (real gap, '+dz+' effect)':'no real difference between '+R.a+' and '+R.b+' (could be chance)';h+=`<tr><td style="text-align:left">${esc(R.s)}</td><td style="text-align:left">${R.g}</td><td>${R.nA}</td><td>${R.mA.toFixed(2)}</td><td>${R.nB}</td><td>${R.mB.toFixed(2)}</td><td>${R.t.toFixed(2)}</td><td>${R.df}</td><td class="${R.p<0.05?'hi':''}">${pfmt(R.p)}</td><td>${Math.abs(R.d).toFixed(2)}</td><td style="text-align:left;font-size:12px">${words}</td></tr>`;});
+    h+='</table></div><div class="verdict">Sorted by p. <b>Bold p&lt;.05</b> = a real mean gap; read Cohen’s d for size (0.2 small · 0.5 medium · 0.8 large). Significant is not the same as large. With small groups (n&lt;15) the test has little power: a non-significant result means “not shown”, not “no difference”.</div>';}
+  else h+='<div class="verdict bad">No t-test could be run with this file — see the reasons below.</div>';
+  Object.keys(skip).forEach(g=>{const by={};skip[g].forEach(x=>{(by[x.why]=by[x.why]||[]).push(x.s);});Object.keys(by).forEach(w=>notes.push({v:g+' × '+by[w].length+' scale(s): '+by[w].join(', '),why:'Not tested: '+w+'.'}));});
+  sc.forEach(S=>{if(!colVals(S.name,true).length)notes.push({v:S.label,why:'Marked as Scale but has no numeric answers.'});});
+  h+=_notesHTML('Not tested — and why',notes.concat(_textScaleNotes()));
   logIt('t-tests — every scale by every 2-group split',h);}
 function runAll(){if(!DATA){return;}const b=$('#runAll');b.disabled=true;b.textContent='… running';setTimeout(()=>{runAllDesc();runAllCorr();runAllCross();runAllT();b.disabled=false;b.textContent='⚡ Run ALL analyses at once';$('#logCard').scrollIntoView({behavior:'smooth'});},30);}
 if($('#runAll'))$('#runAll').onclick=runAll;
