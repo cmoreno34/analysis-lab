@@ -156,7 +156,7 @@ function sig(p){return p<0.05?'statistically significant (p '+(p<0.001?'< 0.001'
 
 /* ================= data model ================= */
 let DATA=null;   // {vars:[{name,label,role,type,codes}], rows:[{name:val}]}
-const DEMO=/age|gender|sex|region|income|channel|educ|ethnic|country|city|zone|segment|cluster|group$|sexo|g[eé]nero|regi[oó]n|canal|provincia|ciudad|zona|segmento|nombre|residencia|estudios|ocupaci[oó]n|pa[ií]s|relaci[oó]n/i;
+const DEMO=/age|gender|sex|region|income|channel|educ|ethnic|country|city|zone|segment|cluster|group$|sexo|g[eé]nero|regi[oó]n|canal|provincia|ciudad|zona|segmento|nombre|residencia|estudios|ocupaci[oó]n|pa[ií]s|relaci[oó]n|categor[ií]a|category/i;
 function pretty(n){n=String(n);if(/\s/.test(n.trim()))return n.trim();return n.replace(/_/g,' ').replace(/(^|\s)(\S)/g,(m,a,c)=>a+c.toUpperCase());}
 function detect(col,name){
   const ne=col.filter(v=>v!==''&&v!=null);
@@ -5575,10 +5575,22 @@ function runCluster(){
   const sc=_scalesFor();
   if(sc.length<2){$('#logCard').style.display='';logIt('Clustering — segments','<div class="verdict">Need at least two <b>scale</b> variables to form segments. Set some variables to “Scale”, or bin a number into a 1–k scale first.</div>','cluster');LOGTAB='cluster';renderLog();$('#logCard').scrollIntoView({behavior:'smooth'});return;}
   const k=+((($('#clK')||{}).value)||3);
-  const names=sc.map(V=>V.name), m=names.length, X=[];
+  /* choose usable variables and say why the others are left out */
+  const N=DATA.rows.length,_blank=V=>DATA.rows.filter(r=>{const x=Number(r[V.name]);return r[V.name]===''||r[V.name]==null||isNaN(x);}).length;
+  const dropped=[];let use=[];
+  sc.forEach(V=>{const b=_blank(V);
+    if(/control|atenci[oó]n|attention|check/i.test(V.label)){dropped.push({v:V.label,why:'Attention-check question — it measures care, not attitudes, so it would distort the segments.'});return;}
+    if(b>0.3*N){dropped.push({v:V.label,why:b+' of '+N+' respondents left it blank ('+Math.round(100*b/N)+'%, e.g. “I don’t know this brand”). Keeping it would leave too few complete respondents.'});return;}
+    if(!_sdOK(V.name)){dropped.push({v:V.label,why:'Everyone gave the same value — it cannot separate segments.'});return;}
+    use.push(V);});
+  const _complete=vs=>DATA.rows.filter(r=>vs.every(V=>{const x=Number(r[V.name]);return!(r[V.name]===''||r[V.name]==null||isNaN(x));})).length;
+  while(use.length>2&&_complete(use)<k*3){const worst=use.slice().sort((a,b)=>_blank(b)-_blank(a))[0];dropped.push({v:worst.label,why:'Dropped to keep enough complete respondents ('+_blank(worst)+' blanks).'});use=use.filter(V=>V!==worst);}
+  const notesH=_notesHTML('Left out of the segmentation — and why',dropped);
+  const names=use.map(V=>V.name), m=names.length, X=[];
   DATA.rows.forEach(r=>{const row=names.map(n=>Number(r[n]));if(row.some((x,j)=>r[names[j]]===''||r[names[j]]==null||isNaN(x)))return;X.push(row);});
   const n=X.length;
-  if(n<k*3){$('#logCard').style.display='';logIt('Clustering — segments','<div class="verdict">Only '+n+' respondents have every scale variable filled in — not enough for '+k+' segments. Try fewer segments or fewer scale variables.</div>','cluster');LOGTAB='cluster';renderLog();$('#logCard').scrollIntoView({behavior:'smooth'});return;}
+  if(m<2||n<k*3){$('#logCard').style.display='';logIt('Clustering — segments','<div class="verdict bad"><b>Segmentation not possible:</b> '+(m<2?'fewer than two usable scale variables remain (see below).':'only '+n+' respondents answered all '+m+' usable scale variables — at least '+(k*3)+' are needed for '+k+' segments. Try fewer segments.')+'</div>'+notesH,'cluster');LOGTAB='cluster';renderLog();$('#logCard').scrollIntoView({behavior:'smooth'});return;}
+  sc.length=0;use.forEach(V=>sc.push(V));
   const mu=[],sg=[];for(let j=0;j<m;j++){const col=X.map(r=>r[j]);mu[j]=mean(col);sg[j]=sd(col)||1;}
   const Z=X.map(r=>r.map((x,j)=>(x-mu[j])/sg[j]));
   const order=Z.map((r,i)=>[i,r.reduce((a,b)=>a+b,0)]).sort((a,b)=>a[1]-b[1]).map(o=>o[0]);
@@ -5603,7 +5615,9 @@ function runCluster(){
     for(let c=0;c<k;c++){const val=prof[c][j];const hi=val>gm[j]+1e-9,lo=val<gm[j]-1e-9;h+='<td class="'+(hi?'hi':'')+'" style="'+(lo?'color:#b00':'')+'">'+(isNaN(val)?'—':val.toFixed(2))+'</td>';}
     h+='<td>'+gm[j].toFixed(2)+'</td></tr>';}
   h+='</table></div>';
+  h+='<div class="verdict"><b>What this does:</b> groups respondents who answer the scale questions in a similar way (k-means on '+m+' standardised scale variables, '+n+' of '+N+' respondents with all of them answered) into '+k+' segments.</div>';
   h+='<div class="verdict">k-means on '+m+' scale variables (standardised), '+n+' complete respondents grouped into '+k+' segments. Each cell is that segment’s average on the variable; <b>green</b> = above the overall average, <b>red</b> = below. The segments differ most on <b>'+esc(spVar)+'</b> — start naming them there. Clustering is exploratory: it ALWAYS returns groups, so judge whether they are real and useful, try another number of segments, and give each one a plain-language name for the client. It shows association between respondents, never a cause.</div>';
+  h+=notesH;
   $('#logCard').style.display='';logIt('Clustering — '+k+' segments',h,'cluster');LOGTAB='cluster';renderLog();$('#logCard').scrollIntoView({behavior:'smooth'});
 }
 if($('#clGo'))$('#clGo').onclick=runCluster;
