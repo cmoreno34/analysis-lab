@@ -5457,12 +5457,13 @@ render.ttest=()=>{
   const nS=DATA.vars.filter(V=>V.role==='scale').length,nG=DATA.vars.filter(V=>V.role==='nominal'||V.role==='ordinal').length;
   if(!nS){$('#panel').innerHTML='<div class="verdict bad"><b>A t-test is not possible yet.</b> It compares <b>means</b>, so you need at least one <b>Scale</b> variable. Set a role in step 2.</div>';return;}
   $('#panel').innerHTML=`<p class="hint" style="margin:0 0 6px"><b>Excel's one- and two-sample t-tests are all here.</b> Pick the one that matches how the data was collected \u2014 the choice is about the DESIGN, not about which gives a smaller p.</p>
-    <div class="row"><div><label class="fl">Which t-test</label><select id="t_mode">
-      <option value="welch" selected>Two groups \u00b7 unequal variances (Welch) \u2014 T.TEST(\u2026;2;3)</option>
-      <option value="pooled">Two groups \u00b7 equal variances (pooled) \u2014 T.TEST(\u2026;2;2)</option>
-      <option value="paired">Paired \u00b7 same people, two measures \u2014 T.TEST(\u2026;2;1)</option>
-      <option value="onesample">One sample - a mean vs a benchmark (e.g. the scale midpoint) - built from the formula</option>
-    </select></div></div>
+    <div style="margin:2px 0 4px"><label class="fl">Which t-test?  (click one)</label>
+    <div id="t_modebar" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
+      <button class="btn sm" data-mode="onesample">One sample - mean vs a benchmark</button>
+      <button class="btn sm" data-mode="paired">Paired - same people, two measures</button>
+      <button class="btn sm" data-mode="welch" aria-selected="true">Two groups - Welch (unequal var)</button>
+      <button class="btn sm" data-mode="pooled">Two groups - pooled (equal var)</button>
+    </div></div>
     <div id="t_why" class="hint" style="margin:2px 0 6px"></div>
     <div id="t_inputs"></div><div id="t_groups"></div><div id="t_out"></div>`;
   const WHY={
@@ -5471,7 +5472,7 @@ render.ttest=()=>{
     paired:'Each person is measured TWICE \u2014 two ratings from the same respondent, or before and after. Each person is their own control, which removes person-to-person variation and makes the test much more sensitive. Excel: <i>t-Test: Paired Two Sample for Means</i>.',
     onesample:'Tests one mean against a fixed benchmark you choose - often the neutral MIDPOINT of the scale (3 on a 1-5, 50 on a 0-100). It answers "is the average really above or below that point?". Excel: t = (mean - benchmark)/(SD/SQRT(n)), p = T.DIST.2T(ABS(t), n-1).'};
   const build=()=>{
-    const mode=$('#t_mode').value;$('#t_why').innerHTML=WHY[mode];$('#t_out').innerHTML='';$('#t_groups').innerHTML='';
+    const mode=$('#t_modebar [aria-selected="true"]').dataset.mode;$('#t_why').innerHTML=WHY[mode];$('#t_out').innerHTML='';$('#t_groups').innerHTML='';
     if(mode==='paired'){
       if(nS<2){$('#t_inputs').innerHTML='<div class="verdict bad"><b>A paired t-test needs two Scale variables</b> measured on the same people \u2014 two ratings in the same row. This file has only one.</div>';return;}
       $('#t_inputs').innerHTML=`<div class="row"><div><label class="fl">Measure 1</label><select id="p_x">${opts(['scale'])}</select></div>
@@ -5499,7 +5500,7 @@ render.ttest=()=>{
         $('#t_go').onclick=ttest;};
     }
   };
-  $('#t_mode').onchange=build;build();
+  const bar=$('#t_modebar');const paint=()=>bar.querySelectorAll('[data-mode]').forEach(b=>{const on=b.getAttribute('aria-selected')==='true';b.style.background=on?'var(--leaf,#2f6b4f)':'';b.style.color=on?'#fff':'';b.style.borderColor=on?'var(--leaf,#2f6b4f)':'';});bar.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{bar.querySelectorAll('[data-mode]').forEach(x=>x.setAttribute('aria-selected','false'));b.setAttribute('aria-selected','true');paint();build();});paint();build();
 };
 function _tVerdict(r,label,aName,bName,mode){
   const dsz=Math.abs(r.d)<0.2?'negligible':Math.abs(r.d)<0.5?'small':Math.abs(r.d)<0.8?'medium':'large';
@@ -5584,7 +5585,8 @@ function correlate(){
   const n=xs.length,mx=mean(xs),my=mean(ys);let sxy=0,sxx=0,syy=0;for(let i=0;i<n;i++){sxy+=(xs[i]-mx)*(ys[i]-my);sxx+=(xs[i]-mx)**2;syy+=(ys[i]-my)**2;}
   const r=sxy/Math.sqrt(sxx*syy);const t=r*Math.sqrt((n-2)/(1-r*r)),p=tP(t,n-2);
   const str=Math.abs(r)<0.1?'negligible':Math.abs(r)<0.3?'weak':Math.abs(r)<0.5?'moderate':Math.abs(r)<0.7?'strong':'very strong';
-  let h=`<div style="margin-top:6px"><span class="stat"><b>${r.toFixed(2)}</b><span>Pearson r</span></span><span class="stat"><b>${(r*r*100).toFixed(0)}%</b><span>variance shared (r²)</span></span><span class="stat"><b>${pfmt(p)}</b><span>p-value</span></span><span class="stat"><b>${n}</b><span>n</span></span></div>`;
+  const eff=Math.abs(r)<0.1?'negligible':Math.abs(r)<0.3?'small':Math.abs(r)<0.5?'medium':'large';
+  let h=`<div style="margin-top:6px"><span class="stat"><b>${r.toFixed(2)}</b><span>Pearson r</span></span><span class="stat"><b>${(r*r*100).toFixed(0)}%</b><span>variance shared (r²)</span></span><span class="stat"><b>${eff}</b><span>effect size (Cohen)</span></span><span class="stat"><b>${pfmt(p)}</b><span>p-value</span></span><span class="stat"><b>${n}</b><span>n</span></span></div>`;
   h+='<canvas id="scatter" width="560" height="320"></canvas>';
   h+=`<div class="verdict ${p<0.05?'':'bad'}">${esc(v(xn).label)} and ${esc(v(yn).label)} have a <b>${str} ${r>0?'positive':'negative'}</b> correlation (r = ${r.toFixed(2)}), ${sig(p)}. ${r>0?'They rise together.':'As one rises the other falls.'} <b>Correlation is not causation</b> — a third factor could drive both.</div>`;
   $('#r_out').innerHTML=h;
