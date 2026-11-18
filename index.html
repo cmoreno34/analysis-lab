@@ -153,6 +153,92 @@ function betai(a,b,x){if(x<=0)return 0;if(x>=1)return 1;const bt=Math.exp(gammln
 function tP(t,df){return betai(df/2,0.5,df/(df+t*t));}        // two-tailed p
 function pfmt(p){return p<0.001?'< 0.001':p.toFixed(3);}
 function sig(p){return p<0.05?'statistically significant (p '+(p<0.001?'< 0.001':'= '+p.toFixed(3))+')':'not significant (p = '+p.toFixed(3)+')';}
+// ---- histogram ------------------------------------------------------------
+// Sturges' rule, clamped: enough bars to show a shape, few enough to read.
+function sturges(n){return Math.max(4,Math.min(14,Math.ceil(Math.log2(Math.max(n,2))+1)));}
+// Equal-width bins. The last bin is closed on the right so the maximum lands in it
+// rather than falling off the end, which is the classic off-by-one here.
+function histBins(a,nb){
+  const mn=Math.min(...a),mx=Math.max(...a);
+  if(mx===mn)return[{lo:mn,hi:mx,n:a.length}];
+  const w=(mx-mn)/nb,b=[];
+  for(let k=0;k<nb;k++)b.push({lo:mn+k*w,hi:mn+(k+1)*w,n:0});
+  a.forEach(x=>{let k=Math.floor((x-mn)/w);if(k>=nb)k=nb-1;if(k<0)k=0;b[k].n++;});
+  return b;
+}
+function _hnum(x){const ax=Math.abs(x);return ax>=1000?Math.round(x).toString():ax>=100?x.toFixed(0):ax>=10?x.toFixed(1):x.toFixed(2).replace(/0$/,'');}
+// An SVG histogram with the mean and the median marked. Those two lines are the
+// point: when they separate, the student SEES the skew instead of being told.
+function histSVG(a,nb){
+  const bins=histBins(a,nb),W=620,H=224,L=44,R=12,T=40,B=42;
+  const pw=W-L-R,ph=H-T-B,mx=Math.max(...bins.map(b=>b.n))||1;
+  const lo=bins[0].lo,hi=bins[bins.length-1].hi,span=(hi-lo)||1;
+  const X=x=>L+pw*(x-lo)/span, Y=n=>T+ph*(1-n/mx);
+  const m=mean(a),md=median(a);
+  let s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="max-width:'+W+'px;height:auto;display:block;margin:8px 0" role="img" aria-label="Histogram">';
+  // y gridlines
+  for(let g=0;g<=4;g++){const yy=T+ph*g/4,lab=Math.round(mx*(1-g/4));
+    s+='<line x1="'+L+'" y1="'+yy+'" x2="'+(W-R)+'" y2="'+yy+'" stroke="var(--line)" stroke-width="1"/>';
+    s+='<text x="'+(L-6)+'" y="'+(yy+4)+'" text-anchor="end" font-size="10" fill="var(--soft)">'+lab+'</text>';}
+  // bars
+  bins.forEach(b=>{const x0=X(b.lo),x1=X(b.hi),bw=Math.max(1,x1-x0-2),y=Y(b.n);
+    s+='<rect x="'+(x0+1)+'" y="'+y+'" width="'+bw+'" height="'+(T+ph-y)+'" fill="var(--leaf)" opacity=".85"><title>'+_hnum(b.lo)+'\u2013'+_hnum(b.hi)+': '+b.n+'</title></rect>';
+    if(b.n&&bw>16)s+='<text x="'+((x0+x1)/2)+'" y="'+(y-4)+'" text-anchor="middle" font-size="10" fill="var(--soft)">'+b.n+'</text>';});
+  // axis
+  s+='<line x1="'+L+'" y1="'+(T+ph)+'" x2="'+(W-R)+'" y2="'+(T+ph)+'" stroke="var(--soft)" stroke-width="1"/>';
+  [lo,lo+span/2,hi].forEach(t=>{s+='<text x="'+X(t)+'" y="'+(T+ph+15)+'" text-anchor="middle" font-size="10" fill="var(--soft)">'+_hnum(t)+'</text>';});
+  // mean and median markers
+  // two caption rows, so the labels never sit on top of a bar count
+  const mk=(x,col,lab,row)=>{const tx=Math.min(W-R-28,Math.max(L+28,X(x)));
+    return '<line x1="'+X(x)+'" y1="'+(T-4)+'" x2="'+X(x)+'" y2="'+(T+ph)+'" stroke="'+col+'" stroke-width="2" stroke-dasharray="5 3"/>'+
+    '<text x="'+tx+'" y="'+(13+row*13)+'" text-anchor="middle" font-size="10.5" fill="'+col+'" font-weight="600">'+lab+' '+_hnum(x)+'</text>';};
+  const near=Math.abs(X(m)-X(md))<80;
+  s+=mk(md,'var(--soft)','median',0);
+  s+=mk(m,'var(--clay)','mean',near?1:0);
+  s+='<text x="'+L+'" y="'+(H-8)+'" font-size="10.5" fill="var(--soft)">'+bins.length+' equal-width bins \u00b7 n = '+a.length+'</text>';
+  return s+'</svg>';
+}
+// How far apart mean and median are, as a share of the spread — the skew cue.
+function skewNote(a){
+  const m=mean(a),md=median(a),s=sd(a);
+  if(!s)return 'Every answer is the same value, so there is no shape to read.';
+  const gap=(m-md)/s;
+  if(Math.abs(gap)<0.1)return 'Mean '+_hnum(m)+' and median '+_hnum(md)+' sit almost on top of each other, so the distribution is roughly symmetric.';
+  const dir=gap>0?'right':'left',pull=gap>0?'a few high':'a few low';
+  return 'The mean ('+_hnum(m)+') sits '+(gap>0?'above':'below')+' the median ('+_hnum(md)+'), so the distribution is skewed to the '+dir+' \u2014 '+pull+' answers are pulling the average away from the typical respondent. Report the median when you describe a typical person, and say which one you used.';
+}
+
+// ---- the three t-tests Excel offers --------------------------------------
+// Excel's Data Analysis menu has exactly these three, and T.TEST's last
+// argument picks between them: 1 = paired, 2 = equal variances, 3 = Welch.
+function tPooled(A,B){
+  const nA=A.length,nB=B.length,mA=mean(A),mB=mean(B),vA=variance(A),vB=variance(B);
+  const sp2=((nA-1)*vA+(nB-1)*vB)/(nA+nB-2),sp=Math.sqrt(sp2);
+  const se=sp*Math.sqrt(1/nA+1/nB),t=(mA-mB)/se,df=nA+nB-2;
+  return {t,df,p:tP(t,df),se,sp,diff:mA-mB,d:(mA-mB)/sp,mA,mB,nA,nB,
+          excel:'=T.TEST(range A; range B; 2; 2)',menu:'t-Test: Two-Sample Assuming Equal Variances'};
+}
+function tWelch(A,B){
+  const nA=A.length,nB=B.length,mA=mean(A),mB=mean(B),vA=variance(A),vB=variance(B);
+  const a=vA/nA,b=vB/nB,se=Math.sqrt(a+b),t=(mA-mB)/se;
+  const df=(a+b)*(a+b)/((a*a)/(nA-1)+(b*b)/(nB-1));
+  const sp=Math.sqrt(((nA-1)*vA+(nB-1)*vB)/(nA+nB-2));
+  return {t,df,p:tP(t,df),se,sp,diff:mA-mB,d:(mA-mB)/sp,mA,mB,nA,nB,
+          excel:'=T.TEST(range A; range B; 2; 3)',menu:'t-Test: Two-Sample Assuming Unequal Variances'};
+}
+function tPaired(D){
+  const n=D.length,md=mean(D),sdd=sd(D),se=sdd/Math.sqrt(n),t=md/se,df=n-1;
+  return {t,df,p:tP(t,df),se,diff:md,sdd,d:md/sdd,n,
+          excel:'=T.TEST(range 1; range 2; 2; 1)',menu:'t-Test: Paired Two Sample for Means'};
+}
+// Rough guide only. Levene would be better; this is the ratio rule students can
+// check by eye, and it exists to prompt the Welch choice, not to decide it.
+function varRatioNote(A,B){
+  const vA=variance(A),vB=variance(B),hi=Math.max(vA,vB),lo=Math.min(vA,vB);
+  const r=lo?hi/lo:Infinity;
+  return {r,warn:r>2,txt:'SD '+sd(A).toFixed(2)+' vs '+sd(B).toFixed(2)+' (variance ratio '+(isFinite(r)?r.toFixed(1):'\u221e')+':1)'};
+}
+
 
 /* ================= data model ================= */
 let DATA=null;   // {vars:[{name,label,role,type,codes}], rows:[{name:val}]}
@@ -5274,9 +5360,15 @@ function refreshSelectors(){if(DATA)render[TAB]&&render[TAB]();}
 const render={};
 render.desc=()=>{
   $('#panel').innerHTML=`<label class="fl">Variable to describe</label>
-    <div class="row"><select id="d_var">${opts(['scale','nominal','ordinal'])}</select><button class="btn sm" id="d_go">Describe</button></div>
+    <div class="row"><select id="d_var">${opts(['scale','nominal','ordinal'])}</select>
+    <div id="d_binwrap"><label class="fl">Histogram bins</label><select id="d_bins">
+      <option value="0" selected>Auto</option><option>5</option><option>6</option><option>8</option><option>10</option><option>12</option><option>15</option>
+    </select></div>
+    <button class="btn sm" id="d_go" style="align-self:flex-end">Describe</button></div>
     <div id="d_out"></div>`;
-  $('#d_go').onclick=describe;
+  const syncBins=()=>{const V=v($('#d_var').value);$('#d_binwrap').style.display=(V&&V.role==='scale')?'':'none';};
+  syncBins();$('#d_var').onchange=syncBins;
+  $('#d_go').onclick=describe;$('#d_bins').onchange=()=>{if($('#d_out').innerHTML)describe();};
 };
 function describe(){
   const name=$('#d_var').value,V=v(name);let h='';
@@ -5288,7 +5380,22 @@ function describe(){
       <span class="stat"><b>${sd(a).toFixed(2)}</b><span>Std dev</span></span>
       <span class="stat"><b>${Math.min(...a)}–${Math.max(...a)}</b><span>Range</span></span>
       <span class="stat"><b>${a.length}</b><span>n</span></span></div>`;
+    const nbSel=$('#d_bins')?Number($('#d_bins').value):0,nb=nbSel||sturges(a.length);
+    h+='<h3 style="margin:10px 0 0;font-size:14px">Histogram</h3>'+histSVG(a,nb);
+    h+='<div class="verdict">'+skewNote(a)+'</div>';
     const freq={};a.forEach(x=>freq[x]=(freq[x]||0)+1);const mx=Math.max(...Object.values(freq));
+    const distinct=Object.keys(freq).length;
+    if(distinct>20){
+      const bins=histBins(a,nb),bmx=Math.max(...bins.map(b=>b.n))||1;
+      h+='<table class="t"><tr><th>Bin</th><th>Count</th><th>%</th><th>Distribution</th></tr>';
+      bins.forEach(b=>{h+='<tr><td>'+_hnum(b.lo)+'\u2013'+_hnum(b.hi)+'</td><td>'+b.n+'</td><td>'+(100*b.n/a.length).toFixed(1)+'%</td>'+
+        '<td style="text-align:left"><span class="bar" style="width:'+(120*b.n/bmx)+'px"></span></td></tr>';});
+      h+='</table><div class="hint">'+distinct+' different values, so they are grouped into '+nb+' bins. Change the bin count above to see how much the shape depends on that choice.</div>';
+      const diff0=Math.abs(mean(a)-median(a));
+      h+=`<div class="verdict">Mean ${mean(a).toFixed(2)}, median ${median(a).toFixed(1)}. ${diff0>0.5?'They differ, so the distribution is skewed \u2014 a few extreme answers pull the mean away from the typical respondent.':'They are close, so the distribution is fairly symmetric.'}</div>`;
+      logIt('Describe \u2014 '+V.label,h);
+      $('#d_out').innerHTML=h;return;
+    }
     h+='<table class="t"><tr><th>Value</th><th>Count</th><th>%</th><th>Distribution</th></tr>';
     Object.keys(freq).sort((x,y)=>x-y).forEach(k=>{h+=`<tr><td>${k}</td><td>${freq[k]}</td><td>${(100*freq[k]/a.length).toFixed(1)}%</td><td style="text-align:left"><span class="bar" style="width:${(freq[k]/mx*160).toFixed(0)}px"></span></td></tr>`;});
     h+='</table>';
@@ -5330,35 +5437,94 @@ function crosstab(){
 }
 render.ttest=()=>{
   const nS=DATA.vars.filter(V=>V.role==='scale').length,nG=DATA.vars.filter(V=>V.role==='nominal'||V.role==='ordinal').length;
-  if(!nS||!nG){$('#panel').innerHTML='<div class="verdict bad"><b>A t-test is not possible yet.</b> It compares the AVERAGE of a Scale variable between two groups of a Category variable. '+(!nS?'This file has no Scale variable (nothing to average). ':'')+(!nG?'This file has no Category variable (no groups to compare). ':'')+'Fix the Role column in section 2 · Variables'+(_textScaleNotes().length?' — note: '+_textScaleNotes().map(n=>esc(n.v)).join(', ')+' look like rating scales stored as words; recode them to numbers in the Excel.':'.')+'</div>';return;}
-  $('#panel').innerHTML=`<p class="hint" style="margin:0 0 6px"><b>What a t-test compares:</b> the <b>mean</b> of one <b>Scale</b> variable (left) between <b>two groups</b> of one <b>Category</b> variable (right). Example: average “intention to buy” for people who work vs people who do not.</p><div class="row"><div><label class="fl">Scale to compare (what is averaged)</label><select id="t_s">${opts(['scale'])}</select></div>
-    <div><label class="fl">Group variable (who is compared — pick 2 groups)</label><select id="t_g">${opts(['nominal','ordinal'])}</select></div>
-    <button class="btn sm" id="t_next" style="align-self:flex-end">Next</button></div><div id="t_groups"></div><div id="t_out"></div>`;
-  $('#t_next').onclick=()=>{const gn=$('#t_g').value;const f=_counts(gn);const ks=Object.keys(f).sort((a,b)=>a-b);
-    if(ks.length<2){$('#t_groups').innerHTML='<div class="verdict bad">“'+esc(v(gn).label)+'” cannot split people into two groups: '+_groupProblem(v(gn),2)+'</div>';return;}
-    $('#t_groups').innerHTML=`<div class="row"><div><label class="fl">Group A</label><select id="t_a">${ks.map(k=>`<option value="${k}">${esc(labelOf(gn,k))} (n=${f[k]})</option>`).join('')}</select></div>
-      <div><label class="fl">Group B</label><select id="t_b">${ks.map((k,i)=>`<option value="${k}" ${i==1?'selected':''}>${esc(labelOf(gn,k))} (n=${f[k]})</option>`).join('')}</select></div>
-      <button class="btn sm" id="t_go" style="align-self:flex-end">Run t-test</button></div>`;
-    $('#t_go').onclick=ttest;};
+  if(!nS){$('#panel').innerHTML='<div class="verdict bad"><b>A t-test is not possible yet.</b> It compares <b>means</b>, so you need at least one <b>Scale</b> variable. Set a role in step 2.</div>';return;}
+  $('#panel').innerHTML=`<p class="hint" style="margin:0 0 6px"><b>Excel offers three t-tests and so does this tool.</b> Pick the one that matches how the data was collected \u2014 the choice is about the DESIGN, not about which gives a smaller p.</p>
+    <div class="row"><div><label class="fl">Which t-test</label><select id="t_mode">
+      <option value="welch" selected>Two groups \u00b7 unequal variances (Welch) \u2014 T.TEST(\u2026;2;3)</option>
+      <option value="pooled">Two groups \u00b7 equal variances (pooled) \u2014 T.TEST(\u2026;2;2)</option>
+      <option value="paired">Paired \u00b7 same people, two measures \u2014 T.TEST(\u2026;2;1)</option>
+    </select></div></div>
+    <div id="t_why" class="hint" style="margin:2px 0 6px"></div>
+    <div id="t_inputs"></div><div id="t_groups"></div><div id="t_out"></div>`;
+  const WHY={
+    welch:'The safe default for two separate groups. It does not assume the two groups vary by the same amount, and when they happen to, it gives almost exactly the pooled answer. Excel: Data \u25b8 Data Analysis \u25b8 <i>t-Test: Two-Sample Assuming Unequal Variances</i>.',
+    pooled:'Two separate groups, assuming both vary by the same amount. Slightly more powerful when that is true, wrong when it is not. Excel: <i>t-Test: Two-Sample Assuming Equal Variances</i>.',
+    paired:'Each person is measured TWICE \u2014 two ratings from the same respondent, or before and after. Each person is their own control, which removes person-to-person variation and makes the test much more sensitive. Excel: <i>t-Test: Paired Two Sample for Means</i>.'};
+  const build=()=>{
+    const mode=$('#t_mode').value;$('#t_why').innerHTML=WHY[mode];$('#t_out').innerHTML='';$('#t_groups').innerHTML='';
+    if(mode==='paired'){
+      if(nS<2){$('#t_inputs').innerHTML='<div class="verdict bad"><b>A paired t-test needs two Scale variables</b> measured on the same people \u2014 two ratings in the same row. This file has only one.</div>';return;}
+      $('#t_inputs').innerHTML=`<div class="row"><div><label class="fl">Measure 1</label><select id="p_x">${opts(['scale'])}</select></div>
+        <div><label class="fl">Measure 2</label><select id="p_y">${opts(['scale'])}</select></div>
+        <button class="btn sm" id="p_go" style="align-self:flex-end">Run paired t-test</button></div>`;
+      const sel=$('#p_y');if(sel.options.length>1)sel.selectedIndex=1;
+      $('#p_go').onclick=ttestPaired;
+    }else{
+      if(!nG){$('#t_inputs').innerHTML='<div class="verdict bad"><b>Not possible yet.</b> Comparing two groups needs a <b>Category</b> variable to split people by. Set one in step 2, or use the paired test.</div>';return;}
+      $('#t_inputs').innerHTML=`<div class="row"><div><label class="fl">Scale variable (what is averaged)</label><select id="t_s">${opts(['scale'])}</select></div>
+        <div><label class="fl">Group variable (who is compared \u2014 pick 2 groups)</label><select id="t_g">${opts(['nominal','ordinal'])}</select></div>
+        <button class="btn sm" id="t_next" style="align-self:flex-end">Next</button></div>`;
+      $('#t_next').onclick=()=>{const gn=$('#t_g').value;const f=_counts(gn);const ks=Object.keys(f).sort((a,b)=>a-b);
+        if(ks.length<2){$('#t_groups').innerHTML='<div class="verdict bad">\u201c'+esc(v(gn).label)+'\u201d cannot split people into two groups: '+_groupProblem(v(gn),2)+'</div>';return;}
+        $('#t_groups').innerHTML=`<div class="row"><div><label class="fl">Group A</label><select id="t_a">${ks.map(k=>`<option value="${k}">${esc(labelOf(gn,k))} (n=${f[k]})</option>`).join('')}</select></div>
+          <div><label class="fl">Group B</label><select id="t_b">${ks.map((k,i)=>`<option value="${k}" ${i==1?'selected':''}>${esc(labelOf(gn,k))} (n=${f[k]})</option>`).join('')}</select></div>
+          <button class="btn sm" id="t_go" style="align-self:flex-end">Run t-test</button></div>`;
+        $('#t_go').onclick=ttest;};
+    }
+  };
+  $('#t_mode').onchange=build;build();
 };
+function _tVerdict(r,label,aName,bName,mode){
+  const dsz=Math.abs(r.d)<0.2?'negligible':Math.abs(r.d)<0.5?'small':Math.abs(r.d)<0.8?'medium':'large';
+  let h=`<div><span class="stat"><b>${r.diff.toFixed(2)}</b><span>Mean diff</span></span>`+
+    `<span class="stat"><b>${r.t.toFixed(2)}</b><span>t</span></span>`+
+    `<span class="stat"><b>${(Math.round(r.df*100)/100)}</b><span>df</span></span>`+
+    `<span class="stat"><b>${pfmt(r.p)}</b><span>p</span></span>`+
+    `<span class="stat"><b>${Math.abs(r.d).toFixed(2)}</b><span>Cohen's d</span></span></div>`;
+  h+=`<div class="verdict ${r.p<0.05?'':'bad'}">${esc(label)} differs by <b>${r.diff.toFixed(2)}</b> between ${esc(aName)} and ${esc(bName)}. The difference is ${sig(r.p)}. Effect size d = ${Math.abs(r.d).toFixed(2)} (${dsz}).
+    <br><b>p says whether you can see it; d says whether it matters.</b> Report both.</div>`;
+  h+=`<div class="hint"><b>Same result in Excel:</b> <code>${r.excel}</code> \u00b7 or Data \u25b8 Data Analysis \u25b8 <i>${r.menu}</i>.</div>`;
+  return h;
+}
 function ttest(){
-  const sn=$('#t_s').value,gn=$('#t_g').value,ga=$('#t_a').value,gb=$('#t_b').value;const S=v(sn),G=v(gn);
-  if(ga===gb){$('#t_out').innerHTML='<p class="warnmsg">Pick two different groups — a group compared with itself always gives a difference of 0.</p>';return;}
-  const A=[],B=[];let blankA=0,blankB=0;DATA.rows.forEach(r=>{const g=String(r[gn]),s=Number(r[sn]);const blank=(r[sn]===''||r[sn]==null||isNaN(s));if(g===String(ga)){blank?blankA++:A.push(s);}else if(g===String(gb)){blank?blankB++:B.push(s);}});
+  const sn=$('#t_s').value,gn=$('#t_g').value,ga=$('#t_a').value,gb=$('#t_b').value,mode=$('#t_mode').value;const S=v(sn),G=v(gn);
+  if(ga===gb){$('#t_out').innerHTML='<p class="warnmsg">Pick two different groups \u2014 a group compared with itself always gives a difference of 0.</p>';return;}
+  const A=[],B=[];let blankA=0,blankB=0;
+  DATA.rows.forEach(r=>{const g=String(r[gn]),s=Number(r[sn]);const blank=(r[sn]===''||r[sn]==null||isNaN(s));
+    if(g===String(ga)){blank?blankA++:A.push(s);}else if(g===String(gb)){blank?blankB++:B.push(s);}});
   const la=esc(labelOf(gn,ga)),lb=esc(labelOf(gn,gb));
-  let what=`<div class="verdict"><b>What is compared:</b> the average of <b>${esc(S.label)}</b> for people whose <b>${esc(G.label)}</b> is “${la}” versus “${lb}” (independent-samples t-test, two-tailed). ${blankA+blankB?(blankA+blankB)+' person(s) in these groups left “'+esc(S.label)+'” blank and are not counted. ':''}Other groups of ${esc(G.label)} are not part of this test.</div>`;
-  if(A.length<2||B.length<2){$('#t_out').innerHTML=what+`<div class="verdict bad"><b>Not possible:</b> “${la}” has ${A.length} valid answer(s) and “${lb}” has ${B.length}. Each group needs at least 2 (better ≥5) to estimate its spread. Pick bigger groups, merge categories, or collect more answers.</div>`;logIt('t-test — '+S.label+' by '+G.label+' (not possible)',$('#t_out').innerHTML);return;}
-  const mA=mean(A),mB=mean(B),vA=variance(A),vB=variance(B),nA=A.length,nB=B.length;
-  if(vA===0&&vB===0){$('#t_out').innerHTML=what+`<div class="verdict bad"><b>Not possible:</b> every person in “${la}” answered ${mA} and every person in “${lb}” answered ${mB}. With no variation inside the groups the t statistic cannot be computed. ${mA===mB?'There is simply no difference to test.':'Describe the difference in words instead.'}</div>`;logIt('t-test — '+S.label+' by '+G.label+' (not possible)',$('#t_out').innerHTML);return;}
-  const sp=Math.sqrt(((nA-1)*vA+(nB-1)*vB)/(nA+nB-2)),se=sp*Math.sqrt(1/nA+1/nB);
-  const t=(mA-mB)/se,df=nA+nB-2,p=tP(t,df),d=(mA-mB)/sp;
+  let what=`<div class="verdict"><b>What is compared:</b> the average of <b>${esc(S.label)}</b> for people whose <b>${esc(G.label)}</b> is \u201c${la}\u201d versus \u201c${lb}\u201d (independent samples, two-tailed).${blankA+blankB?' '+(blankA+blankB)+' blank answer(s) left out.':''}</div>`;
+  if(A.length<2||B.length<2){$('#t_out').innerHTML=what+`<div class="verdict bad"><b>Not possible:</b> \u201c${la}\u201d has ${A.length} valid answer(s) and \u201c${lb}\u201d has ${B.length}. Each group needs at least 2 (better \u2265 5).</div>`;return;}
+  if(variance(A)===0&&variance(B)===0){$('#t_out').innerHTML=what+`<div class="verdict bad"><b>Not possible:</b> there is no variation inside either group, so the t statistic is undefined.</div>`;return;}
+  const r=(mode==='pooled')?tPooled(A,B):tWelch(A,B);
+  const vr=varRatioNote(A,B);
   let h=what+`<table class="t"><tr><th>Group</th><th>n</th><th>Mean</th><th>SD</th></tr>
-    <tr><td>${la}</td><td>${nA}</td><td class="hi">${mA.toFixed(2)}</td><td>${sd(A).toFixed(2)}</td></tr>
-    <tr><td>${lb}</td><td>${nB}</td><td class="hi">${mB.toFixed(2)}</td><td>${sd(B).toFixed(2)}</td></tr></table>`;
-  h+=`<div><span class="stat"><b>${(mA-mB).toFixed(2)}</b><span>Mean diff</span></span><span class="stat"><b>${t.toFixed(2)}</b><span>t</span></span><span class="stat"><b>${df}</b><span>df</span></span><span class="stat"><b>${pfmt(p)}</b><span>p-value</span></span><span class="stat"><b>${Math.abs(d).toFixed(2)}</b><span>Cohen's d</span></span></div>`;
-  const dsz=Math.abs(d)<0.2?'negligible':Math.abs(d)<0.5?'small':Math.abs(d)<0.8?'medium':'large';
-  h+=`<div class="verdict ${p<0.05?'':'bad'}">${esc(S.label)} is ${mA>mB?'higher':'lower'} for <b>${la}</b> (${mA.toFixed(2)}) than <b>${lb}</b> (${mB.toFixed(2)}). The difference is ${sig(p)}. Effect size d = ${Math.abs(d).toFixed(2)} (${dsz}). ${p<0.05?'Real and '+(dsz==='negligible'||dsz==='small'?'but small — ask if it is big enough to act on.':'worth acting on.'):'Could easily be chance — do not build a decision on it.'}${(nA<5||nB<5)?' ⚠ One group has fewer than 5 people, so treat this result with great caution.':''}</div>`;
-  $('#t_out').innerHTML=h;logIt('t-test — '+S.label+' by '+G.label,h);
+    <tr><td>${la}</td><td>${r.nA}</td><td class="hi">${r.mA.toFixed(2)}</td><td>${sd(A).toFixed(2)}</td></tr>
+    <tr><td>${lb}</td><td>${r.nB}</td><td class="hi">${r.mB.toFixed(2)}</td><td>${sd(B).toFixed(2)}</td></tr></table>`;
+  h+=_tVerdict(r,S.label,la,lb,mode);
+  if(mode==='pooled'&&vr.warn)h+=`<div class="verdict bad"><b>Check the assumption:</b> ${vr.txt}. One group varies more than twice as much as the other, which is what the equal-variances test assumes away. Run it again as <b>Welch</b> and report that instead.</div>`;
+  if(mode==='welch')h+=`<div class="hint">Welch does not assume equal spread, which is why df is ${(Math.round(r.df*100)/100)} rather than a whole number. ${vr.txt}.</div>`;
+  $('#t_out').innerHTML=h;logIt('t-test ('+(mode==='pooled'?'equal variances':'Welch')+') \u2014 '+S.label+' by '+G.label,h);
+}
+function ttestPaired(){
+  const xn=$('#p_x').value,yn=$('#p_y').value;const X=v(xn),Y=v(yn);
+  if(xn===yn){$('#t_out').innerHTML='<p class="warnmsg">Pick two different measures \u2014 a measure compared with itself always gives a difference of 0.</p>';return;}
+  const D=[];let dropped=0;
+  DATA.rows.forEach(r=>{const a=Number(r[xn]),b=Number(r[yn]);
+    const bad=(r[xn]===''||r[xn]==null||isNaN(a)||r[yn]===''||r[yn]==null||isNaN(b));
+    bad?dropped++:D.push(a-b);});
+  let what=`<div class="verdict"><b>What is compared:</b> <b>${esc(X.label)}</b> against <b>${esc(Y.label)}</b> for the <b>same respondent</b>, one difference per person (paired, two-tailed).${dropped?' '+dropped+' respondent(s) left out because one of the two answers was blank \u2014 a paired test needs BOTH.':''}</div>`;
+  if(D.length<2){$('#t_out').innerHTML=what+'<div class="verdict bad"><b>Not possible:</b> fewer than 2 respondents answered both.</div>';return;}
+  if(sd(D)===0){$('#t_out').innerHTML=what+'<div class="verdict bad"><b>Not possible:</b> every respondent gave the same difference, so the standard error is 0.</div>';return;}
+  const r=tPaired(D);
+  const mx=mean(DATA.rows.map(q=>Number(q[xn])).filter(x=>!isNaN(x))),my=mean(DATA.rows.map(q=>Number(q[yn])).filter(x=>!isNaN(x)));
+  let h=what+`<table class="t"><tr><th>Measure</th><th>Mean</th></tr>
+    <tr><td>${esc(X.label)}</td><td class="hi">${mx.toFixed(2)}</td></tr>
+    <tr><td>${esc(Y.label)}</td><td class="hi">${my.toFixed(2)}</td></tr>
+    <tr><td><b>Mean difference (per person)</b></td><td class="hi"><b>${r.diff.toFixed(2)}</b></td></tr></table>`;
+  h+=_tVerdict(r,'The difference',esc(X.label),esc(Y.label),'paired');
+  h+=`<div class="hint">n = ${r.n} paired respondents \u00b7 SD of the differences = ${r.sdd.toFixed(2)}. Pairing removes person-to-person variation, so a paired test usually finds a smaller difference significant than two separate groups would.</div>`;
+  $('#t_out').innerHTML=h;logIt('t-test (paired) \u2014 '+X.label+' vs '+Y.label,h);
 }
 render.corr=()=>{
   $('#panel').innerHTML=`<div class="row"><div><label class="fl">Scale X</label><select id="r_x">${opts(['scale'])}</select></div>
@@ -5482,6 +5648,10 @@ function runAllDesc(){const sc=_scalesFor(),cats=DATA.vars.filter(V=>V.role==='n
   if(sc.length){h+='<table class="t"><tr><th>Scale variable</th><th>n</th><th>Mean</th><th>Median</th><th>SD</th><th>Min</th><th>Max</th></tr>';sc.forEach(V=>{const a=colVals(V.name,true);if(!a.length){notes.push({v:V.label,why:'Marked as Scale but has no numeric answers (all blank or text).'});return;}h+=`<tr><td style="text-align:left">${esc(V.label)}</td><td>${a.length}</td><td class="hi">${mean(a).toFixed(2)}</td><td>${median(a).toFixed(1)}</td><td>${a.length>1?sd(a).toFixed(2):'—'}</td><td>${Math.min(...a)}</td><td>${Math.max(...a)}</td></tr>`;});h+='</table>';}
   if(ca.length){h+='<table class="t" style="margin-top:8px"><tr><th>Category variable</th><th>n</th><th>#cats</th><th>Most common</th></tr>';ca.forEach(V=>{const a=colVals(V.name,true);if(!a.length)return;const f={};a.forEach(x=>f[x]=(f[x]||0)+1);const top=Object.keys(f).sort((x,y)=>f[y]-f[x])[0];h+=`<tr><td style="text-align:left">${esc(V.label)}</td><td>${a.length}</td><td>${Object.keys(f).length}</td><td>${esc(labelOf(V.name,top))} (${(100*f[top]/a.length).toFixed(0)}%)</td></tr>`;});h+='</table>';}
   cats.filter(V=>ca.indexOf(V)<0).forEach(V=>{const k=Object.keys(_counts(V.name)).length;notes.push({v:V.label,why:k<2?'Only one answer (or none) — nothing to tabulate.':'It has '+k+' different answers — too many for a frequency table (likely free text or a number). Set it to Scale if it is a number, bin it, or set it to Ignore.'});});
+  if(sc.length){h+='<h3 style="margin:14px 0 0;font-size:14px">Histograms</h3>';
+    sc.forEach(V=>{const a=colVals(V.name,true);if(a.length<3)return;
+      h+='<div style="margin-top:10px"><b>'+esc(V.label)+'</b>'+histSVG(a,sturges(a.length))+
+         '<div class="hint" style="margin-top:-2px">'+skewNote(a)+'</div></div>';});}
   h+='<div class="verdict">A snapshot of every variable. Scales get a mean (and watch mean vs median for skew); categories get their shares. This is where every project starts.</div>';
   h+=_notesHTML('Not described — and why',notes.concat(_roleNotes()));
   logIt('Describe — all variables',h);}
@@ -5509,7 +5679,7 @@ function runAllCross(){const cats=DATA.vars.filter(V=>V.role==='nominal'||V.role
   logIt('Cross-tabs + chi² — all category pairs',h);}
 
 function runAllT(){const sc=_scalesFor(),cats=DATA.vars.filter(V=>V.role==='nominal'||V.role==='ordinal');const MIN=5;const notes=[],skip={};
-  const intro='<div class="verdict"><b>What this compares:</b> each row is an <b>independent-samples t-test</b> (two-tailed, pooled variance). It takes ONE <b>Scale</b> variable (the thing being averaged) and ONE <b>Category</b> variable (who is being compared), and compares the <b>mean of the scale</b> between the <b>two largest groups</b> of that category. Read a row as: “Do people in group A give a higher or lower average on this scale than people in group B?”. Smaller groups of that category are left out, and blanks on the scale are not counted.</div>';
+  const intro='<div class="verdict"><b>What this compares:</b> each row is an <b>independent-samples t-test</b> (two-tailed, <b>Welch</b> — unequal variances, the same default as the t-test tab and Excel’s T.TEST(…;2;3)). It takes ONE <b>Scale</b> variable (the thing being averaged) and ONE <b>Category</b> variable (who is being compared), and compares the <b>mean of the scale</b> between the <b>two largest groups</b> of that category. Read a row as: “Do people in group A give a higher or lower average on this scale than people in group B?”. Smaller groups of that category are left out, and blanks on the scale are not counted.</div>';
   if(!sc.length||!cats.length){const n=[];if(!sc.length)n.push({v:'Scale to compare',why:'No variable has role Scale. A t-test compares AVERAGES, so it needs at least one number you can average (a 1–5 / 1–7 rating, euros, age…).'});if(!cats.length)n.push({v:'Groups to compare',why:'No variable has role Category, so there is nothing to split people into two groups (e.g. sex, works yes/no, age band).'});logIt('t-tests — every scale by every 2-group split',intro+_notesHTML('t-tests not possible — and why',n.concat(_textScaleNotes())));return;}
   let rows=[];
   cats.forEach(G=>{const why=_groupProblem(G,MIN);if(why){notes.push({v:G.label+' (as groups)',why:'Cannot be used to split people: '+why});return;}
@@ -5520,7 +5690,7 @@ function runAllT(){const sc=_scalesFor(),cats=DATA.vars.filter(V=>V.role==='nomi
       if(A.length<2||B.length<2){skip[key].push({s:S.label,why:'only '+A.length+' and '+B.length+' valid answers in the two groups (need ≥2 each; blanks do not count)'});return;}
       const mA=mean(A),mB=mean(B),vA=variance(A),vB=variance(B),nA=A.length,nB=B.length;
       if(vA===0&&vB===0){skip[key].push({s:S.label,why:mA===mB?'everyone in both groups gave the same answer ('+mA+') — there is no variation and nothing to test':'each group answered with a single value ('+mA+' vs '+mB+'), so there is no within-group variation and t cannot be computed'});return;}
-      const sp=Math.sqrt(((nA-1)*vA+(nB-1)*vB)/(nA+nB-2)),se=sp*Math.sqrt(1/nA+1/nB);const t=(mA-mB)/se,df=nA+nB-2,p=tP(t,df),d=(mA-mB)/sp;if(!isFinite(t)){skip[key].push({s:S.label,why:'the result is not a finite number (no variation)'});return;}
+      const sp=Math.sqrt(((nA-1)*vA+(nB-1)*vB)/(nA+nB-2));const _a=vA/nA,_b=vB/nB,se=Math.sqrt(_a+_b);const t=(mA-mB)/se,df=(_a+_b)*(_a+_b)/((_a*_a)/(nA-1)+(_b*_b)/(nB-1)),p=tP(t,df),d=(mA-mB)/sp;if(!isFinite(t)){skip[key].push({s:S.label,why:'the result is not a finite number (no variation)'});return;}
       rows.push({s:S.label,g:'<b>'+esc(G.label)+'</b>: '+esc(labelOf(G.name,ga))+' vs '+esc(labelOf(G.name,gb))+'<span style="color:var(--soft);font-size:11px">'+leftTxt+'</span>',a:esc(labelOf(G.name,ga)),b:esc(labelOf(G.name,gb)),nA,nB,mA,mB,t,df,p,d});});});
   rows.sort((x,y)=>x.p-y.p);
   let h=intro;
