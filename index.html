@@ -5527,16 +5527,21 @@ function ttest(){
 function ttestPaired(){
   const xn=$('#p_x').value,yn=$('#p_y').value;const X=v(xn),Y=v(yn);
   if(xn===yn){$('#t_out').innerHTML='<p class="warnmsg">Pick two different measures \u2014 a measure compared with itself always gives a difference of 0.</p>';return;}
-  const D=[];let dropped=0;
+  const D=[],PX=[],PY=[];let dropped=0;
   DATA.rows.forEach(r=>{const a=Number(r[xn]),b=Number(r[yn]);
     const bad=(r[xn]===''||r[xn]==null||isNaN(a)||r[yn]===''||r[yn]==null||isNaN(b));
-    bad?dropped++:D.push(a-b);});
+    if(bad){dropped++;return;}
+    D.push(a-b);PX.push(a);PY.push(b);});
   let what=`<div class="verdict"><b>What is compared:</b> <b>${esc(X.label)}</b> against <b>${esc(Y.label)}</b> for the <b>same respondent</b>, one difference per person (paired, two-tailed).${dropped?' '+dropped+' respondent(s) left out because one of the two answers was blank \u2014 a paired test needs BOTH.':''}</div>`;
   if(D.length<2){$('#t_out').innerHTML=what+'<div class="verdict bad"><b>Not possible:</b> fewer than 2 respondents answered both.</div>';return;}
   if(sd(D)===0){$('#t_out').innerHTML=what+'<div class="verdict bad"><b>Not possible:</b> every respondent gave the same difference, so the standard error is 0.</div>';return;}
   const r=tPaired(D);
-  const mx=mean(DATA.rows.map(q=>Number(q[xn])).filter(x=>!isNaN(x))),my=mean(DATA.rows.map(q=>Number(q[yn])).filter(x=>!isNaN(x)));
-  let h=what+`<table class="t"><tr><th>Measure</th><th>Mean</th></tr>
+  // The means shown must be the means of the PAIRED rows, or the mean
+  // difference would not equal the difference of the two means on screen.
+  // (Number('') is 0 in JS, so filtering on isNaN alone would score a blank
+  // answer as a zero and quietly drag the mean down.)
+  const mx=mean(PX),my=mean(PY);
+  let h=what+`<table class="t"><tr><th>Measure (paired rows only)</th><th>Mean</th></tr>
     <tr><td>${esc(X.label)}</td><td class="hi">${mx.toFixed(2)}</td></tr>
     <tr><td>${esc(Y.label)}</td><td class="hi">${my.toFixed(2)}</td></tr>
     <tr><td><b>Mean difference (per person)</b></td><td class="hi"><b>${r.diff.toFixed(2)}</b></td></tr></table>`;
