@@ -5459,17 +5459,15 @@ render.ttest=()=>{
   $('#panel').innerHTML=`<p class="hint" style="margin:0 0 6px"><b>Excel's one- and two-sample t-tests are all here.</b> Pick the one that matches how the data was collected \u2014 the choice is about the DESIGN, not about which gives a smaller p.</p>
     <div style="margin:2px 0 4px"><label class="fl">Which t-test?  (click one)</label>
     <div id="t_modebar" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">
-      <button class="btn sm" data-mode="onesample">One sample - mean vs a benchmark</button>
-      <button class="btn sm" data-mode="paired">Paired - same people, two measures</button>
-      <button class="btn sm" data-mode="welch" aria-selected="true">Two groups - Welch (unequal var)</button>
-      <button class="btn sm" data-mode="pooled">Two groups - pooled (equal var)</button>
+      <button class="btn sm" data-mode="onesample">One sample (tab D) - mean vs a benchmark</button>
+      <button class="btn sm" data-mode="pooled" aria-selected="true">Two groups (tab E) - different people</button>
+      <button class="btn sm" data-mode="paired">Paired (tab F) - same people, measured twice</button>
     </div></div>
-    <p class="hint" style="margin:2px 0 4px;font-size:13px">Excel's three t-tests are <b>One sample</b> (workbook tab D), <b>Two groups</b> (tab E) and <b>Paired</b> (tab F). "Two groups" has the two versions Excel's T.TEST offers: <b>pooled</b> (equal variances, <i>= your tab E</i>) and <b>Welch</b> (unequal variances, the safer default) - that is the only extra button.</p>
+    <p class="hint" style="margin:2px 0 4px;font-size:13px">These are exactly the three t-tests from the Excel workbook - <b>One sample</b> (tab D), <b>Two groups</b> (tab E) and <b>Paired</b> (tab F). Pick by DESIGN: <b>Two groups</b> = two different sets of people (men vs women...); <b>Paired</b> = the SAME people measured twice; <b>One sample</b> = one mean against a fixed benchmark.</p>
     <div id="t_why" class="hint" style="margin:2px 0 6px"></div>
     <div id="t_inputs"></div><div id="t_groups"></div><div id="t_out"></div>`;
   const WHY={
-    welch:'The safe default for two separate groups. It does not assume the two groups vary by the same amount, and when they happen to, it gives almost exactly the pooled answer. Excel: Data \u25b8 Data Analysis \u25b8 <i>t-Test: Two-Sample Assuming Unequal Variances</i>.',
-    pooled:'Two separate groups, assuming both vary by the same amount. Slightly more powerful when that is true, wrong when it is not. Excel: <i>t-Test: Two-Sample Assuming Equal Variances</i>.',
+    pooled:'Two separate groups of DIFFERENT people (e.g. men vs women). The same two-group test you ran in Excel tab E. Excel: =T.TEST(range A; range B; 2; 2), or <i>t-Test: Two-Sample Assuming Equal Variances</i>.',
     paired:'Each person is measured TWICE \u2014 two ratings from the same respondent, or before and after. Each person is their own control, which removes person-to-person variation and makes the test much more sensitive. Excel: <i>t-Test: Paired Two Sample for Means</i>.',
     onesample:'Tests one mean against a fixed benchmark you choose - often the neutral MIDPOINT of the scale (3 on a 1-5, 50 on a 0-100). It answers "is the average really above or below that point?". Excel: t = (mean - benchmark)/(SD/SQRT(n)), p = T.DIST.2T(ABS(t), n-1).'};
   const build=()=>{
@@ -5525,15 +5523,14 @@ function ttest(){
   let what=`<div class="verdict"><b>What is compared:</b> the average of <b>${esc(S.label)}</b> for people whose <b>${esc(G.label)}</b> is \u201c${la}\u201d versus \u201c${lb}\u201d (independent samples, two-tailed).${blankA+blankB?' '+(blankA+blankB)+' blank answer(s) left out.':''}</div>`;
   if(A.length<2||B.length<2){$('#t_out').innerHTML=what+`<div class="verdict bad"><b>Not possible:</b> \u201c${la}\u201d has ${A.length} valid answer(s) and \u201c${lb}\u201d has ${B.length}. Each group needs at least 2 (better \u2265 5).</div>`;return;}
   if(variance(A)===0&&variance(B)===0){$('#t_out').innerHTML=what+`<div class="verdict bad"><b>Not possible:</b> there is no variation inside either group, so the t statistic is undefined.</div>`;return;}
-  const r=(mode==='pooled')?tPooled(A,B):tWelch(A,B);
+  const r=tPooled(A,B);
   const vr=varRatioNote(A,B);
   let h=what+`<table class="t"><tr><th>Group</th><th>n</th><th>Mean</th><th>SD</th></tr>
     <tr><td>${la}</td><td>${r.nA}</td><td class="hi">${r.mA.toFixed(2)}</td><td>${sd(A).toFixed(2)}</td></tr>
     <tr><td>${lb}</td><td>${r.nB}</td><td class="hi">${r.mB.toFixed(2)}</td><td>${sd(B).toFixed(2)}</td></tr></table>`;
   h+=_tVerdict(r,S.label,la,lb,mode);
-  if(mode==='pooled'&&vr.warn)h+=`<div class="verdict bad"><b>Check the assumption:</b> ${vr.txt}. One group varies more than twice as much as the other, which is what the equal-variances test assumes away. Run it again as <b>Welch</b> and report that instead.</div>`;
-  if(mode==='welch')h+=`<div class="hint">Welch does not assume equal spread, which is why df is ${(Math.round(r.df*100)/100)} rather than a whole number. ${vr.txt}.</div>`;
-  $('#t_out').innerHTML=h;logIt('t-test ('+(mode==='pooled'?'equal variances':'Welch')+') \u2014 '+S.label+' by '+G.label,h);
+  if(vr.warn)h+=`<div class="verdict bad"><b>Check the assumption:</b> ${vr.txt}. One group varies more than twice as much as the other, which the equal-variances test assumes away - read this result with caution (collapse groups or gather more answers).</div>`;
+  $('#t_out').innerHTML=h;logIt('t-test (two groups, equal variances) \u2014 '+S.label+' by '+G.label,h);
 }
 function ttestPaired(){
   const xn=$('#p_x').value,yn=$('#p_y').value;const X=v(xn),Y=v(yn);
@@ -5728,7 +5725,7 @@ function runAllCross(){const cats=DATA.vars.filter(V=>V.role==='nominal'||V.role
   logIt('Cross-tabs + chi² — all category pairs',h);}
 
 function runAllT(){const sc=_scalesFor(),cats=DATA.vars.filter(V=>V.role==='nominal'||V.role==='ordinal');const MIN=5;const notes=[],skip={};
-  const intro='<div class="verdict"><b>What this compares:</b> each row is an <b>independent-samples t-test</b> (two-tailed, <b>Welch</b> — unequal variances, the same default as the t-test tab and Excel’s T.TEST(…;2;3)). It takes ONE <b>Scale</b> variable (the thing being averaged) and ONE <b>Category</b> variable (who is being compared), and compares the <b>mean of the scale</b> between the <b>two largest groups</b> of that category. Read a row as: “Do people in group A give a higher or lower average on this scale than people in group B?”. Smaller groups of that category are left out, and blanks on the scale are not counted.</div>';
+  const intro='<div class="verdict"><b>What this compares:</b> each row is an <b>independent-samples t-test</b> (two-tailed, <b>equal variances</b> — the same two-group test you ran in Excel tab E, and Excel’s T.TEST(…;2;2)). It takes ONE <b>Scale</b> variable (the thing being averaged) and ONE <b>Category</b> variable (who is being compared), and compares the <b>mean of the scale</b> between the <b>two largest groups</b> of that category. Read a row as: “Do people in group A give a higher or lower average on this scale than people in group B?”. Smaller groups of that category are left out, and blanks on the scale are not counted.</div>';
   if(!sc.length||!cats.length){const n=[];if(!sc.length)n.push({v:'Scale to compare',why:'No variable has role Scale. A t-test compares AVERAGES, so it needs at least one number you can average (a 1–5 / 1–7 rating, euros, age…).'});if(!cats.length)n.push({v:'Groups to compare',why:'No variable has role Category, so there is nothing to split people into two groups (e.g. sex, works yes/no, age band).'});logIt('t-tests — every scale by every 2-group split',intro+_notesHTML('t-tests not possible — and why',n.concat(_textScaleNotes())));return;}
   let rows=[];
   cats.forEach(G=>{const why=_groupProblem(G,MIN);if(why){notes.push({v:G.label+' (as groups)',why:'Cannot be used to split people: '+why});return;}
@@ -5739,7 +5736,7 @@ function runAllT(){const sc=_scalesFor(),cats=DATA.vars.filter(V=>V.role==='nomi
       if(A.length<2||B.length<2){skip[key].push({s:S.label,why:'only '+A.length+' and '+B.length+' valid answers in the two groups (need ≥2 each; blanks do not count)'});return;}
       const mA=mean(A),mB=mean(B),vA=variance(A),vB=variance(B),nA=A.length,nB=B.length;
       if(vA===0&&vB===0){skip[key].push({s:S.label,why:mA===mB?'everyone in both groups gave the same answer ('+mA+') — there is no variation and nothing to test':'each group answered with a single value ('+mA+' vs '+mB+'), so there is no within-group variation and t cannot be computed'});return;}
-      const sp=Math.sqrt(((nA-1)*vA+(nB-1)*vB)/(nA+nB-2));const _a=vA/nA,_b=vB/nB,se=Math.sqrt(_a+_b);const t=(mA-mB)/se,df=(_a+_b)*(_a+_b)/((_a*_a)/(nA-1)+(_b*_b)/(nB-1)),p=tP(t,df),d=(mA-mB)/sp;if(!isFinite(t)){skip[key].push({s:S.label,why:'the result is not a finite number (no variation)'});return;}
+      const sp=Math.sqrt(((nA-1)*vA+(nB-1)*vB)/(nA+nB-2));const se=sp*Math.sqrt(1/nA+1/nB);const t=(mA-mB)/se,df=nA+nB-2,p=tP(t,df),d=(mA-mB)/sp;if(!isFinite(t)){skip[key].push({s:S.label,why:'the result is not a finite number (no variation)'});return;}
       rows.push({s:S.label,g:'<b>'+esc(G.label)+'</b>: '+esc(labelOf(G.name,ga))+' vs '+esc(labelOf(G.name,gb))+'<span style="color:var(--soft);font-size:11px">'+leftTxt+'</span>',a:esc(labelOf(G.name,ga)),b:esc(labelOf(G.name,gb)),nA,nB,mA,mB,t,df,p,d});});});
   rows.sort((x,y)=>x.p-y.p);
   let h=intro;
