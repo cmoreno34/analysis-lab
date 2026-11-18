@@ -5456,18 +5456,20 @@ function crosstab(){
 render.ttest=()=>{
   const nS=DATA.vars.filter(V=>V.role==='scale').length,nG=DATA.vars.filter(V=>V.role==='nominal'||V.role==='ordinal').length;
   if(!nS){$('#panel').innerHTML='<div class="verdict bad"><b>A t-test is not possible yet.</b> It compares <b>means</b>, so you need at least one <b>Scale</b> variable. Set a role in step 2.</div>';return;}
-  $('#panel').innerHTML=`<p class="hint" style="margin:0 0 6px"><b>Excel offers three t-tests and so does this tool.</b> Pick the one that matches how the data was collected \u2014 the choice is about the DESIGN, not about which gives a smaller p.</p>
+  $('#panel').innerHTML=`<p class="hint" style="margin:0 0 6px"><b>Excel's one- and two-sample t-tests are all here.</b> Pick the one that matches how the data was collected \u2014 the choice is about the DESIGN, not about which gives a smaller p.</p>
     <div class="row"><div><label class="fl">Which t-test</label><select id="t_mode">
       <option value="welch" selected>Two groups \u00b7 unequal variances (Welch) \u2014 T.TEST(\u2026;2;3)</option>
       <option value="pooled">Two groups \u00b7 equal variances (pooled) \u2014 T.TEST(\u2026;2;2)</option>
       <option value="paired">Paired \u00b7 same people, two measures \u2014 T.TEST(\u2026;2;1)</option>
+      <option value="onesample">One sample - a mean vs a benchmark (e.g. the scale midpoint) - built from the formula</option>
     </select></div></div>
     <div id="t_why" class="hint" style="margin:2px 0 6px"></div>
     <div id="t_inputs"></div><div id="t_groups"></div><div id="t_out"></div>`;
   const WHY={
     welch:'The safe default for two separate groups. It does not assume the two groups vary by the same amount, and when they happen to, it gives almost exactly the pooled answer. Excel: Data \u25b8 Data Analysis \u25b8 <i>t-Test: Two-Sample Assuming Unequal Variances</i>.',
     pooled:'Two separate groups, assuming both vary by the same amount. Slightly more powerful when that is true, wrong when it is not. Excel: <i>t-Test: Two-Sample Assuming Equal Variances</i>.',
-    paired:'Each person is measured TWICE \u2014 two ratings from the same respondent, or before and after. Each person is their own control, which removes person-to-person variation and makes the test much more sensitive. Excel: <i>t-Test: Paired Two Sample for Means</i>.'};
+    paired:'Each person is measured TWICE \u2014 two ratings from the same respondent, or before and after. Each person is their own control, which removes person-to-person variation and makes the test much more sensitive. Excel: <i>t-Test: Paired Two Sample for Means</i>.',
+    onesample:'Tests one mean against a fixed benchmark you choose - often the neutral MIDPOINT of the scale (3 on a 1-5, 50 on a 0-100). It answers "is the average really above or below that point?". Excel: t = (mean - benchmark)/(SD/SQRT(n)), p = T.DIST.2T(ABS(t), n-1).'};
   const build=()=>{
     const mode=$('#t_mode').value;$('#t_why').innerHTML=WHY[mode];$('#t_out').innerHTML='';$('#t_groups').innerHTML='';
     if(mode==='paired'){
@@ -5477,6 +5479,13 @@ render.ttest=()=>{
         <button class="btn sm" id="p_go" style="align-self:flex-end">Run paired t-test</button></div>`;
       const sel=$('#p_y');if(sel.options.length>1)sel.selectedIndex=1;
       $('#p_go').onclick=ttestPaired;
+    }else if(mode==='onesample'){
+      $('#t_inputs').innerHTML=`<div class="row"><div><label class="fl">Scale variable</label><select id="o_s">${opts(['scale'])}</select></div>`+
+        `<div><label class="fl">Benchmark (the criterion)</label><input type="number" id="o_mu" step="any" style="min-height:40px"></div>`+
+        `<button class="btn sm" id="o_go" style="align-self:flex-end">Run one-sample t-test</button></div><div class="hint" id="o_hint" style="margin-top:4px"></div>`;
+      const setMid=()=>{const a=colVals($('#o_s').value,true);if(a.length){const mn=Math.min(...a),mx=Math.max(...a);const mid=Math.round(((mn+mx)/2)*100)/100;$('#o_mu').value=mid;$('#o_hint').innerHTML='Default = the midpoint of this scale ('+mn+' to '+mx+', so '+mid+'). Change it to any criterion you want to test the mean against.';}};
+      $('#o_s').onchange=setMid;setMid();
+      $('#o_go').onclick=ttestOneSample;
     }else{
       if(!nG){$('#t_inputs').innerHTML='<div class="verdict bad"><b>Not possible yet.</b> Comparing two groups needs a <b>Category</b> variable to split people by. Set one in step 2, or use the paired test.</div>';return;}
       $('#t_inputs').innerHTML=`<div class="row"><div><label class="fl">Scale variable (what is averaged)</label><select id="t_s">${opts(['scale'])}</select></div>
@@ -5548,6 +5557,20 @@ function ttestPaired(){
   h+=_tVerdict(r,'The difference',esc(X.label),esc(Y.label),'paired');
   h+=`<div class="hint">n = ${r.n} paired respondents \u00b7 SD of the differences = ${r.sdd.toFixed(2)}. Pairing removes person-to-person variation, so a paired test usually finds a smaller difference significant than two separate groups would.</div>`;
   $('#t_out').innerHTML=h;logIt('t-test (paired) \u2014 '+X.label+' vs '+Y.label,h);
+}
+function ttestOneSample(){
+  const sn=$('#o_s').value, mu0=parseFloat($('#o_mu').value);
+  const S=v(sn), a=colVals(sn,true);
+  if(!a.length||isNaN(mu0)){$('#t_out').innerHTML='<div class="verdict bad">Pick a Scale variable and type a numeric benchmark.</div>';return;}
+  const n=a.length,m=mean(a),s=sd(a);
+  if(s===0){$('#t_out').innerHTML='<div class="verdict bad">Everyone gave the same answer, so the standard error is 0.</div>';return;}
+  const se=s/Math.sqrt(n),t=(m-mu0)/se,df=n-1,p=tP(t,df),dir=m>mu0?'ABOVE':'below';
+  let h=`<div class="verdict"><b>What is compared:</b> the mean of <b>${esc(S.label)}</b> (${m.toFixed(2)}, n=${n}) against the fixed benchmark <b>${mu0}</b> - one sample, two-tailed.</div>`;
+  h+=`<table class="t"><tr><th>n</th><th>Mean</th><th>SD</th><th>Benchmark</th><th>t</th><th>df</th><th>p</th></tr>`+
+     `<tr><td>${n}</td><td class="hi">${m.toFixed(2)}</td><td>${s.toFixed(2)}</td><td>${mu0}</td><td>${t.toFixed(2)}</td><td>${df}</td><td class="${p<0.05?'hi':''}">${pfmt(p)}</td></tr></table>`;
+  h+=`<div class="verdict"><b>H0:</b> the population mean equals ${mu0}; any gap is sampling chance. ${p<0.05?('<b>Reject H0</b> - the mean is significantly '+dir+' '+mu0+'.'):('<b>Do not reject H0</b> - no evidence the mean differs from '+mu0+'.')}</div>`;
+  h+=`<div class="hint">Excel: t = (AVERAGE(range) - ${mu0}) / (STDEV.S(range)/SQRT(COUNT(range)));  p = T.DIST.2T(ABS(t), ${df}). Excel's Data Analysis has no one-sample t-test - you build it from the formula, exactly as in the P14 / P15 workbooks.</div>`;
+  $('#t_out').innerHTML=h;logIt('t-test (one-sample) - '+S.label+' vs '+mu0, h, 'ttest');
 }
 render.corr=()=>{
   $('#panel').innerHTML=`<div class="row"><div><label class="fl">Scale X</label><select id="r_x">${opts(['scale'])}</select></div>
