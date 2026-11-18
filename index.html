@@ -5782,7 +5782,47 @@ renderLog=function(){
   $('#log').querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{LOG.splice(+b.dataset.rm,1);renderLog();});
   $('#log').querySelectorAll('[data-sel]').forEach(cb=>cb.onchange=()=>{LOG[+cb.dataset.sel].sel=cb.checked;});
 };
-runAll=function(){if(!DATA){return;}const b=$('#runAll');b.disabled=true;b.textContent='… running';setTimeout(()=>{runAllDesc();runAllCorr();runAllCross();runAllT();b.disabled=false;b.textContent='⚡ Run ALL analyses at once';$('#logCard').style.display='';LOGTAB='desc';renderLog();$('#logCard').scrollIntoView({behavior:'smooth'});},30);};
+
+function _isRating(name){const a=colVals(name,true);return a.length>=2&&isDiscreteSmall(a)&&Math.min(...a)>=1&&Math.max(...a)<=10;}
+function runAllOne(){
+  const sc=_scalesFor();const notes=[];let rows=[];
+  sc.forEach(S=>{const a=colVals(S.name,true);
+    if(!_isRating(S.name)){notes.push({v:S.label,why:'not a 1-5 / 1-10 rating scale - a one-sample test needs a benchmark you choose, so run it yourself in Compare groups (e.g. an index like 0-100 vs 50).'});return;}
+    const mn=Math.min(...a),mx=Math.max(...a),mu0=Math.round(((mn+mx)/2)*100)/100,n=a.length,m=mean(a),s=sd(a);
+    if(s===0){notes.push({v:S.label,why:'no variation, so t cannot be computed.'});return;}
+    const t=(m-mu0)/(s/Math.sqrt(n)),df=n-1,p=tP(t,df);rows.push({s:S.label,mu0,n,m,t,df,p});});
+  rows.sort((x,y)=>x.p-y.p);
+  let h='<div class="verdict"><b>What this compares:</b> each row is a <b>one-sample t-test</b> (Excel tab D) - does a rating scale sit above or below the <b>neutral midpoint</b> of its own scale (3 on a 1-5, 5.5 on a 1-10)? H0: the population mean equals that midpoint. Only 1-5 / 1-10 rating scales are shown automatically; for anything else you pick your own benchmark in Compare groups.</div>';
+  if(rows.length){h+='<div style="overflow:auto"><table class="t"><tr><th style="text-align:left">Scale</th><th>Midpoint (H0)</th><th>n</th><th>Mean</th><th>t</th><th>df</th><th>p</th><th style="text-align:left">In words</th></tr>';
+    rows.forEach(R=>{const w=R.p<0.05?('mean is '+(R.m>R.mu0?'ABOVE':'BELOW')+' the neutral midpoint'):'not distinguishable from the midpoint (could be chance)';
+      h+=`<tr><td style="text-align:left">${esc(R.s)}</td><td>${R.mu0}</td><td>${R.n}</td><td>${R.m.toFixed(2)}</td><td>${R.t.toFixed(2)}</td><td>${R.df}</td><td class="${R.p<0.05?'hi':''}">${pfmt(R.p)}</td><td style="text-align:left;font-size:12px">${w}</td></tr>`;});
+    h+='</table></div><div class="verdict">Excel: t = (AVERAGE - midpoint) / (STDEV.S/SQRT(n)); p = T.DIST.2T(ABS(t), n-1). <b>Bold p&lt;.05</b> = the average really sits off the neutral point. df = n - 1.</div>';}
+  else h+='<div class="verdict bad">No 1-5 / 1-10 rating scale to test here - see below.</div>';
+  h+=_notesHTML('Not tested as one-sample - and why',notes);
+  logIt('One-sample t-tests - each rating scale vs its midpoint',h,'ttest');}
+function runAllPaired(){
+  const sc=_scalesFor();const notes=[];let rows=[];
+  const rate=sc.filter(S=>_isRating(S.name));
+  sc.forEach(S=>{if(!_isRating(S.name))notes.push({v:S.label,why:'not a 1-5 / 1-10 rating scale - paired needs two measures on the SAME scale (subtracting euros from a 1-10 rating is meaningless).'});});
+  for(let i=0;i<rate.length;i++)for(let j=i+1;j<rate.length;j++){
+    const A=rate[i],B=rate[j],aa=colVals(A.name,true),bb=colVals(B.name,true);
+    if(Math.min(...aa)!==Math.min(...bb)||Math.max(...aa)!==Math.max(...bb))continue;
+    const d=[];let sx=0,sy=0;DATA.rows.forEach(r=>{const x=Number(r[A.name]),y=Number(r[B.name]);
+      if(r[A.name]===''||r[A.name]==null||isNaN(x)||r[B.name]===''||r[B.name]==null||isNaN(y))return;d.push(x-y);sx+=x;sy+=y;});
+    if(d.length<2)continue;const n=d.length,md=mean(d),s=sd(d);if(s===0)continue;
+    const t=md/(s/Math.sqrt(n)),df=n-1,p=tP(t,df),dz=Math.abs(md/s);
+    rows.push({a:A.label,b:B.label,n,m1:sx/n,m2:sy/n,md,t,df,p,dz});}
+  rows.sort((x,y)=>x.p-y.p);
+  let h='<div class="verdict"><b>What this compares:</b> each row is a <b>paired t-test</b> (Excel tab F) between two ratings the SAME respondents gave, on the same scale. H0: the two statements have the same average and the gap is sampling chance. Only pairs on an identical 1-5 / 1-10 scale are shown.</div>';
+  if(rows.length){h+='<div style="overflow:auto"><table class="t"><tr><th style="text-align:left">Pair (same people, two ratings)</th><th>n</th><th>Mean 1</th><th>Mean 2</th><th>Mean diff</th><th>t</th><th>df</th><th>p</th><th>d</th><th style="text-align:left">In words</th></tr>';
+    rows.forEach(R=>{const sz=R.dz<0.2?'negligible':R.dz<0.5?'small':R.dz<0.8?'medium':'large';const w=R.p<0.05?(esc(R.a)+' rated '+(R.m1>R.m2?'higher':'lower')+' than '+esc(R.b)+' ('+sz+' effect)'):'no real difference';
+      h+=`<tr><td style="text-align:left">${esc(R.a)} vs ${esc(R.b)}</td><td>${R.n}</td><td>${R.m1.toFixed(2)}</td><td>${R.m2.toFixed(2)}</td><td>${R.md.toFixed(2)}</td><td>${R.t.toFixed(2)}</td><td>${R.df}</td><td class="${R.p<0.05?'hi':''}">${pfmt(R.p)}</td><td>${R.dz.toFixed(2)}</td><td style="text-align:left;font-size:12px">${w}</td></tr>`;});
+    h+='</table></div><div class="verdict">Excel: =T.TEST(range 1; range 2; 2; 1). <b>Bold p&lt;.05</b> = a real gap between the two ratings; read d for size. Pairing removes person-to-person differences, so these t are larger than treating the two columns as separate groups. df = n - 1.</div>';}
+  else h+='<div class="verdict bad">No two rating scales share the same 1-5 / 1-10 range, so no meaningful paired test - see below.</div>';
+  h+=_notesHTML('Not paired - and why',notes);
+  logIt('Paired t-tests - comparable rating scales',h,'ttest');}
+
+runAll=function(){if(!DATA){return;}const b=$('#runAll');b.disabled=true;b.textContent='… running';setTimeout(()=>{runAllDesc();runAllCorr();runAllCross();runAllT();runAllOne();runAllPaired();b.disabled=false;b.textContent='⚡ Run ALL analyses at once';$('#logCard').style.display='';LOGTAB='desc';renderLog();$('#logCard').scrollIntoView({behavior:'smooth'});},30);};
 if($('#runAll'))$('#runAll').onclick=runAll;
 
 /* optional clustering: k-means on the scale variables (standardised) */
