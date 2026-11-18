@@ -158,7 +158,15 @@ function sig(p){return p<0.05?'statistically significant (p '+(p<0.001?'< 0.001'
 function sturges(n){return Math.max(4,Math.min(14,Math.ceil(Math.log2(Math.max(n,2))+1)));}
 // Equal-width bins. The last bin is closed on the right so the maximum lands in it
 // rather than falling off the end, which is the classic off-by-one here.
+// A rating scale is DISCRETE: 1-5 has five possible answers, so it gets five
+// bars. Fixed-width bins leave gaps between the integers — Sturges gave the
+// Veja 1-5 ratings eight bins, three of which fell between values and were empty.
+function isDiscreteSmall(a){const u=new Set(a);return u.size<=12&&[...u].every(x=>Number.isInteger(x));}
 function histBins(a,nb){
+  if(isDiscreteSmall(a)){
+    const c=new Map();a.forEach(x=>c.set(x,(c.get(x)||0)+1));
+    return [...c.keys()].sort((x,y)=>x-y).map(x=>({lo:x,hi:x,n:c.get(x),discrete:true}));
+  }
   const mn=Math.min(...a),mx=Math.max(...a);
   if(mx===mn)return[{lo:mn,hi:mx,n:a.length}];
   const w=(mx-mn)/nb,b=[];
@@ -173,7 +181,12 @@ function histSVG(a,nb){
   const bins=histBins(a,nb),W=620,H=224,L=44,R=12,T=40,B=42;
   const pw=W-L-R,ph=H-T-B,mx=Math.max(...bins.map(b=>b.n))||1;
   const lo=bins[0].lo,hi=bins[bins.length-1].hi,span=(hi-lo)||1;
-  const X=x=>L+pw*(x-lo)/span, Y=n=>T+ph*(1-n/mx);
+  const disc=!!bins[0].discrete,nbins=bins.length,slot=pw/nbins;
+  // discrete bars sit in equal slots; continuous bars sit on the value axis
+  const X=x=>disc?(L+slot*(bins.findIndex(b=>b.lo===x)+0.5)):(L+pw*(x-lo)/span);
+  const Xv=x=>L+pw*(x-lo)/span;
+  const Xm=x=>disc?(L+slot*(0.5+(nbins-1)*(x-lo)/span)):Xv(x);
+  const Y=n=>T+ph*(1-n/mx);
   const m=mean(a),md=median(a);
   let s='<svg viewBox="0 0 '+W+' '+H+'" width="100%" style="max-width:'+W+'px;height:auto;display:block;margin:8px 0" role="img" aria-label="Histogram">';
   // y gridlines
@@ -181,21 +194,25 @@ function histSVG(a,nb){
     s+='<line x1="'+L+'" y1="'+yy+'" x2="'+(W-R)+'" y2="'+yy+'" stroke="var(--line)" stroke-width="1"/>';
     s+='<text x="'+(L-6)+'" y="'+(yy+4)+'" text-anchor="end" font-size="10" fill="var(--soft)">'+lab+'</text>';}
   // bars
-  bins.forEach(b=>{const x0=X(b.lo),x1=X(b.hi),bw=Math.max(1,x1-x0-2),y=Y(b.n);
-    s+='<rect x="'+(x0+1)+'" y="'+y+'" width="'+bw+'" height="'+(T+ph-y)+'" fill="var(--leaf)" opacity=".85"><title>'+_hnum(b.lo)+'\u2013'+_hnum(b.hi)+': '+b.n+'</title></rect>';
+  bins.forEach((b,i)=>{
+    const x0=disc?(L+slot*i+slot*0.15):X(b.lo),x1=disc?(L+slot*(i+1)-slot*0.15):X(b.hi);
+    const bw=Math.max(1,x1-x0-(disc?0:2)),y=Y(b.n);
+    const tip=disc?(_hnum(b.lo)+': '+b.n):(_hnum(b.lo)+'\u2013'+_hnum(b.hi)+': '+b.n);
+    s+='<rect x="'+(x0+(disc?0:1))+'" y="'+y+'" width="'+bw+'" height="'+(T+ph-y)+'" fill="var(--leaf)" opacity=".85"><title>'+tip+'</title></rect>';
     if(b.n&&bw>16)s+='<text x="'+((x0+x1)/2)+'" y="'+(y-4)+'" text-anchor="middle" font-size="10" fill="var(--soft)">'+b.n+'</text>';});
   // axis
   s+='<line x1="'+L+'" y1="'+(T+ph)+'" x2="'+(W-R)+'" y2="'+(T+ph)+'" stroke="var(--soft)" stroke-width="1"/>';
-  [lo,lo+span/2,hi].forEach(t=>{s+='<text x="'+X(t)+'" y="'+(T+ph+15)+'" text-anchor="middle" font-size="10" fill="var(--soft)">'+_hnum(t)+'</text>';});
+  if(disc){bins.forEach((b,i)=>{s+='<text x="'+(L+slot*(i+0.5))+'" y="'+(T+ph+15)+'" text-anchor="middle" font-size="10" fill="var(--soft)">'+_hnum(b.lo)+'</text>';});}
+  else{[lo,lo+span/2,hi].forEach(t=>{s+='<text x="'+Xv(t)+'" y="'+(T+ph+15)+'" text-anchor="middle" font-size="10" fill="var(--soft)">'+_hnum(t)+'</text>';});}
   // mean and median markers
   // two caption rows, so the labels never sit on top of a bar count
-  const mk=(x,col,lab,row)=>{const tx=Math.min(W-R-28,Math.max(L+28,X(x)));
-    return '<line x1="'+X(x)+'" y1="'+(T-4)+'" x2="'+X(x)+'" y2="'+(T+ph)+'" stroke="'+col+'" stroke-width="2" stroke-dasharray="5 3"/>'+
+  const mk=(x,col,lab,row)=>{const tx=Math.min(W-R-28,Math.max(L+28,Xm(x)));
+    return '<line x1="'+Xm(x)+'" y1="'+(T-4)+'" x2="'+Xm(x)+'" y2="'+(T+ph)+'" stroke="'+col+'" stroke-width="2" stroke-dasharray="5 3"/>'+
     '<text x="'+tx+'" y="'+(13+row*13)+'" text-anchor="middle" font-size="10.5" fill="'+col+'" font-weight="600">'+lab+' '+_hnum(x)+'</text>';};
-  const near=Math.abs(X(m)-X(md))<80;
+  const near=Math.abs(Xm(m)-Xm(md))<80;
   s+=mk(md,'var(--soft)','median',0);
   s+=mk(m,'var(--clay)','mean',near?1:0);
-  s+='<text x="'+L+'" y="'+(H-8)+'" font-size="10.5" fill="var(--soft)">'+bins.length+' equal-width bins \u00b7 n = '+a.length+'</text>';
+  s+='<text x="'+L+'" y="'+(H-8)+'" font-size="10.5" fill="var(--soft)">'+(disc?(bins.length+' possible answers \u2014 one bar each'):(bins.length+' equal-width bins'))+' \u00b7 n = '+a.length+'</text>';
   return s+'</svg>';
 }
 // How far apart mean and median are, as a share of the spread — the skew cue.
@@ -5382,6 +5399,7 @@ function describe(){
       <span class="stat"><b>${a.length}</b><span>n</span></span></div>`;
     const nbSel=$('#d_bins')?Number($('#d_bins').value):0,nb=nbSel||sturges(a.length);
     h+='<h3 style="margin:10px 0 0;font-size:14px">Histogram</h3>'+histSVG(a,nb);
+    if(isDiscreteSmall(a))h+='<div class="hint">This is a discrete scale with '+(new Set(a)).size+' possible answers, so it gets one bar per answer and the bin count does not apply. Bins are for continuous measures like euros or hours.</div>';
     h+='<div class="verdict">'+skewNote(a)+'</div>';
     const freq={};a.forEach(x=>freq[x]=(freq[x]||0)+1);const mx=Math.max(...Object.values(freq));
     const distinct=Object.keys(freq).length;
