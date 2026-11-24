@@ -97,7 +97,7 @@ pre.prompt{background:#14211b;color:#e8efe6;border-radius:10px;padding:13px;marg
   <p class="hint">Each column was read and given a <b>role</b> and, for categories, a <b>coding</b>. Where it wasn't sure it flags a suggestion in orange — change the role or the labels if you disagree. <b>Scale</b> = a rating you can average (interval). <b>Category</b> = groups you count (nominal). <b>Ignore</b> = skip it.</p>
   <div style="overflow:auto"><table class="vtab" id="vtab"></table></div>
   <div style="margin-top:14px;padding:11px 13px;border:1px solid var(--line,#d8d2c4);border-radius:10px;background:var(--panel,#faf8f2)"><div style="font-weight:600;margin-bottom:4px">➕ Make a CATEGORY (or a 1–k scale) from a number — <span style="color:var(--leaf,#2f6b4f)">binning</span></div><div style="font-size:12px;color:var(--soft,#4a5a50);margin-bottom:9px">Cross-tab and chi² only use <b>categories</b>. To cross-tabulate a number (age, budget, hours…), bin it into groups here — it becomes a new category you can cross-tabulate (or a 1–k scale you can correlate).</div>  <div class="row" id="binRow" style="align-items:flex-end"><div><label class="fl">Turn a number into groups (binning)</label><select id="bin_var"></select></div><div><label class="fl">Groups</label><select id="bin_n"><option>2</option><option selected>3</option><option>4</option><option>5</option></select></div><div><label class="fl">Method</label><select id="bin_m"><option value="count">equal count (quantiles)</option><option value="width">equal width</option></select></div><div><label class="fl">Use as</label><select id="bin_as"><option value="ordinal">ordered category (cross-tab + chi²)</option><option value="scale">numeric scale 1–k (correlation + t-test)</option></select></div><button class="btn sm" id="bin_go">Create</button><span class="hint">The new variable appears in the table above and in the analysis menus below.</span></div></div>
-  <div class="row"><button class="btn sm" id="editLabels">Edit category labels…</button><button class="btn sm ghost" id="peekData">See the raw data</button><span class="hint" id="labelHint"></span></div>
+  <div class="row"><button class="btn sm" id="editLabels">Edit labels / answer numbers…</button><button class="btn sm ghost" id="peekData">See the raw data</button><span class="hint" id="labelHint"></span></div>
   <div id="labelEditor" style="display:none;margin-top:8px"></div>
   <div id="rawPeek" style="display:none;margin-top:8px;overflow:auto"></div>
 </div>
@@ -264,6 +264,7 @@ function pretty(n){n=String(n);if(/\s/.test(n.trim()))return n.trim();return n.r
 function detect(col,name){
   const ne=col.filter(v=>v!==''&&v!=null);
   if(/^(id|respondent|resp|record|#)/i.test(name))return{role:'id',type:'id'};
+  if(/^(timestamp|time ?stamp|marca temporal|marca de tiempo|submitted at|submission date|fecha y hora)$/i.test(String(name).trim()))return{role:'ignore',type:'text',suggest:'Form timestamp — left out (set a Role if you need it).'};
   const nums=ne.map(Number),allNum=ne.length&&nums.every(v=>!isNaN(v));
   const distinct=[...new Set(ne)];
   if(allNum){
@@ -277,14 +278,59 @@ function detect(col,name){
   }
   return{role:'nominal',type:'text',suggest:'Text answers — coded to numbers automatically.'};
 }
+/* ---- rating scales written as words: put the answers in their logical order (low -> high) ---- */
+const _LIKERT_WORDS=/acuerdo|desacuerdo|probable|improbable|importante|mejor|peor|nada|poco|mucho|bastante|muy|agree|disagree|likely|unlikely|important|satisf|never|always|nunca|siempre|atractiv|dispuest|útil|util/i;
+function _norm(t){return String(t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim();}
+function _wordScore(t){const w=_norm(t);
+  if(/^(ni\b.*\bni\b|neither|neutral|indiferente|indecis|undecided|unsure|ns\/?nc|no lo se|no se\b|no sabe|a veces|sometimes|occasionally|ocasionalmente|regular|normal\b|medio|average|ok\b|aceptable|acceptable)|\bni de acuerdo ni\b|\bneither\b|\bneutral\b|\bindiferente\b/.test(w))return 0;
+  let pol=0;
+  if(/desacuerdo|disagree|improbable|unlikely|insatisf|dissatisf|unsatisf|\bnada\b|\bnunca\b|\bnever\b|not at all|\bpeor\b|\bworse\b|inutil|useless|\bpoco\b|\brarely\b|rara vez|\bseldom\b|\bmal[oa]?\b|\bbad\b|\bpoor\b|unimportant|sin importancia|no importante|\bdislike|no me gusta|unattractive|terrible|horrible|\bawful\b|^no\b/.test(w))pol=-1;
+  else if(/acuerdo|\bagree|probable|likely|satisf|\bmucho\b|\bsiempre\b|\balways\b|\bmejor\b|\bbetter\b|importante|important|\butil\b|useful|atractiv|attractive|dispuest|willing|\bbuen[oa]?\b|\bgood\b|excelente|excellent|me gusta|\blike\b|\boften\b|frecuente|a menudo|\busually\b|\bbastante\b|^(si|yes)\b/.test(w))pol=1;
+  else return null;
+  let k=1;
+  if(/\b(muy|totalmente|completamente|extremadamente|absolutamente|strongly|very|completely|extremely|totally|definitely|definitivamente|mucho|nada|nunca|never|siempre|always|excelente|excellent|terrible|horrible|awful)\b|not at all/.test(w))k=2;
+  if(/\b(casi|almost|bastante|fairly|quite)\b/.test(w))k=1.5;
+  if(/\b(algo|somewhat|slightly|ligeramente|moderadamente|moderately|rather)\b|un poco|a little/.test(w))k=0.5;
+  if(/muy poco|very little/.test(w)){pol=-1;k=1.5;}
+  return pol*k;}
+/* "about once a month", "two or three times a week", "I would not attend" -> times per month */
+function _freqScore(t){const w=_norm(t);
+  if(/\b(never|nunca|would not|wouldn'?t|not attend|no asistiria|no iria|none|ninguna)\b/.test(w))return 0;
+  const P=[[/\b(a|per|each|every|al|por|cada) day\b|\bdaily\b|\bdiari|\bal dia\b|\bcada dia\b/,30],[/\b(two|2) weeks\b|fortnight|quincen|cada dos semanas/,2.17],[/\bweek|semana/,4.33],[/\b(three|3) months\b|\b(tres|3) meses\b|quarter|trimestre/,1/3],[/\b(six|6) months\b|\b(seis|6) meses\b|semester|semestre/,1/6],[/\bmonth|\bmes\b|\bmensual/,1],[/\byear|\bano\b|\banual/,1/12]];
+  let per=null;for(const [re,v] of P){if(re.test(w)){per=v;break;}}if(per==null)return null;
+  let c=null;
+  if(/\b(two or three|2 or 3|2-3|2–3|dos o tres)\b/.test(w))c=2.5;else if(/\b(once or twice|una o dos)\b/.test(w))c=1.5;else if(/\b(three or four|3-4|tres o cuatro)\b/.test(w))c=3.5;
+  else if(/\b(once|one time|una vez|1 vez)\b/.test(w))c=1;else if(/\b(twice|two times|dos veces)\b/.test(w))c=2;else if(/\b(three times|tres veces)\b/.test(w))c=3;else if(/\b(four times|cuatro veces)\b/.test(w))c=4;
+  else{const m=w.match(/(\d+(?:[.,]\d+)?)\s*(times|veces|x)\b/);if(m)c=Number(m[1].replace(',','.'));}
+  if(c==null&&/\b(daily|diari|weekly|semanal|monthly|mensual|yearly|anual)/.test(w))c=1;
+  if(c==null)return null;return c*per;}
+/* "Less than 30 minutes", "30–45 minutes", "More than 90" -> a representative number */
+function _rangeScore(t){const w=_norm(t),n=(w.match(/\d+(?:[.,]\d+)?/g)||[]).map(x=>Number(x.replace(',','.')));if(!n.length||n.length>2||/\d:\d/.test(w))return null;
+  let x=n.length===2?(n[0]+n[1])/2:n[0];
+  if(/less than|fewer than|under|below|up to|menos de|hasta|<|\bmax/.test(w))x=n[0]-0.5;else if(/more than|over|above|or more|plus|\+|mas de|o mas|>/.test(w))x=n[n.length-1]+0.5;return x;}
+/* returns {map:{answer:number}, how} or null when the order cannot be worked out safely */
+function _orderText(uniq){if(uniq.length<2)return null;
+  const lead=uniq.map(u=>{const m=String(u).match(/^\s*(-?\d+(?:[.,]\d+)?)\s*[-–—.:)=]?\s*\D/);return m?Number(m[1].replace(',','.')):null;});
+  if(lead.every(x=>x!=null)&&new Set(lead).size===uniq.length){const map={};uniq.forEach((u,i)=>map[u]=lead[i]);return{map,how:'number at the start of each answer'};}
+  const tries=[[_freqScore,'how often each answer means'],[_wordScore,'order of the words'],[_rangeScore,'numbers in each answer']];
+  for(const [fn,how] of tries){const sc=uniq.map(fn);if(sc.some(x=>x==null)||new Set(sc).size!==uniq.length)continue;
+    const ord=uniq.map((u,i)=>({u,s:sc[i]})).sort((a,b)=>a.s-b.s),map={};ord.forEach((o,i)=>map[o.u]=i+1);return{map,how};}
+  return null;}
+function _setTextMap(V,map){V.textmap=map;V.codes={};Object.keys(map).sort((a,b)=>map[a]-map[b]).forEach(u=>V.codes[map[u]]=u);}
 function buildVars(headers,matrix){
   const vars=headers.map((h,ci)=>{
     const col=matrix.map(r=>r[ci]);const d=detect(col,h);
     const v={name:h,label:pretty(h),role:d.role,type:d.type,suggest:d.suggest||'',codes:null};
     if(v.role==='nominal'){
-      if(d.type==='text'){const uniq=[...new Set(col.filter(x=>x!==''&&x!=null))];v.codes={};uniq.forEach((u,i)=>v.codes[i+1]=u);v.textmap={};uniq.forEach((u,i)=>v.textmap[u]=i+1);}
+      if(d.type==='text'){/* text columns are handled below */}
       else{const uniq=[...new Set(col.filter(x=>x!==''&&x!=null).map(Number))].sort((a,b)=>a-b);v.codes={};uniq.forEach(u=>v.codes[u]=String(u));}
     }
+    if(d.type==='text'){const uniq=[...new Set(col.filter(x=>x!==''&&x!=null))];const o=_orderText(uniq);
+      if(o){_setTextMap(v,o.map);
+        if(uniq.length>=3&&uniq.length<=11&&v.role==='nominal'){v.role='scale';
+          v.suggest='Rating scale written as words \u2014 numbered by the '+o.how+': '+Object.keys(v.codes).map(k=>k+' = '+v.codes[k]).join(', ')+'. Check the order (button \u201cEdit labels / answer numbers\u201d).';}}
+      else{const m={};uniq.forEach((u,i)=>m[u]=i+1);_setTextMap(v,m);
+        if(uniq.length>=3&&uniq.length<=11&&uniq.filter(x=>_LIKERT_WORDS.test(String(x))).length>=Math.ceil(uniq.length*0.6))v.suggest='Looks like a rating scale written as words, but the lab could not work out the order. To average it: set Role to Scale and give each answer its number with \u201cEdit labels / answer numbers\u201d.';}}
     return v;
   });
   return vars;
@@ -5354,6 +5400,7 @@ function renderVars(){
   $('#vtab').innerHTML=h;
   {const bv=$('#bin_var');if(bv)bv.innerHTML=DATA.vars.filter(V=>V.role==='scale').map(V=>'<option value="'+esc(V.name)+'">'+esc(V.label)+'</option>').join('')||'<option value="">(no scale variables)</option>';}
   $('#vtab').querySelectorAll('[data-role]').forEach(s=>s.onchange=e=>{const V=DATA.vars[e.target.dataset.role];V.role=e.target.value;V.suggest='';
+    if((V.role==='scale'||V.role==='ordinal')&&V.textmap&&Object.keys(V.textmap).length>2&&!_orderText(Object.keys(V.textmap)))V.suggest='Text answers are numbered in the order they first appear in the data \u2014 give each answer its real number with \u201cEdit labels / answer numbers\u201d before reading means or correlations.';
     if(V.role==='nominal'&&!V.codes){const uniq=[...new Set(colVals(V.name,true))].sort((a,b)=>a-b);V.codes={};uniq.forEach(u=>V.codes[u]=String(u));}
     renderVars();refreshSelectors();});
   $('#vtab').querySelectorAll('[data-lbl]').forEach(inp=>inp.oninput=e=>{DATA.vars[e.target.dataset.lbl].label=e.target.value;refreshSelectors();});
@@ -5363,11 +5410,15 @@ $('#peekData')&&($('#peekData').onclick=()=>{const ed=$('#rawPeek');if(ed.style.
 $('#bin_go')&&($('#bin_go').onclick=()=>{const n=$('#bin_var').value;if(!n)return;makeBin(n,+$('#bin_n').value,$('#bin_m').value,$('#bin_as').value);});
 function renderLabelEditor(){
   const cats=DATA.vars.filter(V=>V.role==='nominal'&&V.codes&&Object.keys(V.codes).length<=20&&Object.keys(V.codes).length>1);
-  if(!cats.length){$('#labelEditor').innerHTML='<p class="hint">No category variables to label.</p>';return;}
+  const tsc=DATA.vars.filter(V=>V.textmap&&(V.role==='scale'||V.role==='ordinal'));
+  if(!cats.length&&!tsc.length){$('#labelEditor').innerHTML='<p class="hint">No category variables to label.</p>';return;}
   let h='';
+  if(tsc.length){h+='<div class="hint" style="margin:4px 0">Text answers used as a scale: the <b>number</b> each answer counts as (low = 1). Means, correlations and t-tests use these numbers.</div>';
+    tsc.forEach(V=>{h+=`<div style="margin:8px 0"><b>${esc(V.label)}</b><div class="row">`+Object.keys(V.textmap).sort((a,b)=>V.textmap[a]-V.textmap[b]).map(u=>`<span><label class="fl">${esc(u)}</label><input type="number" step="any" data-tm="${esc(V.name)}" data-ans="${esc(u)}" value="${V.textmap[u]}" style="width:70px"></span>`).join('')+`</div></div>`;});}
   cats.forEach(V=>{h+=`<div style="margin:8px 0"><b>${esc(V.label)}</b><div class="row">`+Object.keys(V.codes).map(k=>`<span><label class="fl">${esc(k)}</label><input type="text" data-code="${V.name}|${k}" value="${esc(V.codes[k])}" style="width:110px"></span>`).join('')+`</div></div>`;});
   $('#labelEditor').innerHTML=h;
   $('#labelEditor').querySelectorAll('[data-code]').forEach(inp=>inp.oninput=e=>{const [nm,k]=e.target.dataset.code.split('|');v(nm).codes[k]=e.target.value;refreshSelectors();});
+  $('#labelEditor').querySelectorAll('[data-tm]').forEach(inp=>inp.onchange=e=>{const V=v(e.target.dataset.tm),x=Number(e.target.value);if(e.target.value===''||isNaN(x))return;const m=Object.assign({},V.textmap);m[e.target.dataset.ans]=x;_setTextMap(V,m);V.suggest='';renderVars();refreshSelectors();});
 }
 
 /* ---- analysis tabs ---- */
@@ -5519,7 +5570,7 @@ function ttest(){
   const sn=$('#t_s').value,gn=$('#t_g').value,ga=$('#t_a').value,gb=$('#t_b').value,mode=$('#t_mode').value;const S=v(sn),G=v(gn);
   if(ga===gb){$('#t_out').innerHTML='<p class="warnmsg">Pick two different groups \u2014 a group compared with itself always gives a difference of 0.</p>';return;}
   const A=[],B=[];let blankA=0,blankB=0;
-  DATA.rows.forEach(r=>{const g=String(r[gn]),s=numAt(r,sn);const blank=(r[sn]===''||r[sn]==null||isNaN(s));
+  DATA.rows.forEach(r=>{const g=String(numAt(r,gn)),s=numAt(r,sn);const blank=(r[sn]===''||r[sn]==null||isNaN(s));
     if(g===String(ga)){blank?blankA++:A.push(s);}else if(g===String(gb)){blank?blankB++:B.push(s);}});
   const la=esc(labelOf(gn,ga)),lb=esc(labelOf(gn,gb));
   let what=`<div class="verdict"><b>What is compared:</b> the average of <b>${esc(S.label)}</b> for people whose <b>${esc(G.label)}</b> is \u201c${la}\u201d versus \u201c${lb}\u201d (independent samples, two-tailed).${blankA+blankB?' '+(blankA+blankB)+' blank answer(s) left out.':''}</div>`;
@@ -5677,10 +5728,10 @@ function _corrPair(xn,yn){const xs=[],ys=[];DATA.rows.forEach(r=>{const x=numAt(
 function _crossPair(rn,cn){const pairs=DATA.rows.map(r=>[r[rn],r[cn]]).filter(p=>p[0]!==''&&p[1]!==''&&p[0]!=null&&p[1]!=null);if(pairs.length<4)return null;const rk=[...new Set(pairs.map(p=>p[0]))].sort((a,b)=>a-b),ck=[...new Set(pairs.map(p=>p[1]))].sort((a,b)=>a-b);if(rk.length<2||ck.length<2)return null;const O={};rk.forEach(r=>{O[r]={};ck.forEach(c=>O[r][c]=0);});pairs.forEach(p=>O[p[0]][p[1]]++);const rt={},ct={};let N=0;rk.forEach(r=>{rt[r]=0;ck.forEach(c=>rt[r]+=O[r][c]);N+=rt[r];});ck.forEach(c=>{ct[c]=0;rk.forEach(r=>ct[c]+=O[r][c]);});let chi=0,low=0;rk.forEach(r=>ck.forEach(c=>{const E=rt[r]*ct[c]/N;if(E<5)low++;chi+=(O[r][c]-E)**2/E;}));const df=(rk.length-1)*(ck.length-1),p=chi2p(chi,df),V=Math.sqrt(chi/(N*Math.min(rk.length-1,ck.length-1)));return{chi,df,p,V,low,N};}
 /* ---- explanations: what each analysis compares, and what could not be run (and why) ---- */
 const _LIKERT_TXT=/acuerdo|desacuerdo|probable|improbable|importante|mejor|peor|nada|poco|mucho|bastante|muy|agree|disagree|likely|unlikely|important|satisf|never|always|nunca|siempre|atractiv|dispuest|útil|util/i;
-function _looksLikeTextScale(V){if(V.type!=='text')return false;const d=[...new Set(DATA.rows.map(r=>r[V.name]).filter(x=>x!==''&&x!=null))];return d.length>=3&&d.length<=11&&d.filter(x=>_LIKERT_TXT.test(String(x))).length>=Math.ceil(d.length*0.6);}
+function _looksLikeTextScale(V){if(V.type!=='text'||V.role==='scale')return false;const d=[...new Set(DATA.rows.map(r=>r[V.name]).filter(x=>x!==''&&x!=null))];return d.length>=3&&d.length<=11&&d.filter(x=>_LIKERT_TXT.test(String(x))).length>=Math.ceil(d.length*0.6);}
 function _counts(name){const f={};colVals(name,true).forEach(x=>f[x]=(f[x]||0)+1);return f;}
 function _sdOK(name){const a=colVals(name,true);return a.length>=2&&variance(a)>0;}
-function _textScaleNotes(){const L=DATA.vars.filter(_looksLikeTextScale);if(!L.length)return[];const ex=String(DATA.rows.map(r=>r[L[0].name]).find(x=>x!==''&&x!=null));return[{v:L.length+' variable(s) with rating scales written as words: '+L.map(V=>V.label).slice(0,8).join(' · ')+(L.length>8?' · …':''),why:'Answers such as “'+esc(ex)+'” are words, so the lab reads them as unordered categories: they cannot be averaged, correlated or compared with a t-test. Recode the words to numbers (1–5 / 1–7) in the Excel and load it again.'}];}
+function _textScaleNotes(){const L=DATA.vars.filter(_looksLikeTextScale);if(!L.length)return[];const ex=String(DATA.rows.map(r=>r[L[0].name]).find(x=>x!==''&&x!=null));return[{v:L.length+' variable(s) with rating scales written as words: '+L.map(V=>V.label).slice(0,8).join(' · ')+(L.length>8?' · …':''),why:'Answers such as “'+esc(ex)+'” are words and are being used as categories, so they are not averaged or correlated. To use them as a scale, set the Role to Scale and check the number each answer counts as with “Edit labels / answer numbers” (or recode them to 1–5 / 1–7 in Excel).'}];}
 function _groupProblem(G,minN){const f=_counts(G.name),ks=Object.keys(f);
   if(!ks.length)return'it has no answers (every cell is blank).';
   if(ks.length<2)return'everyone gave the same answer (“'+esc(labelOf(G.name,ks[0]))+'”), so there are no two groups to compare.';
@@ -5733,7 +5784,7 @@ function runAllT(){const sc=_scalesFor(),cats=DATA.vars.filter(V=>V.role==='nomi
   cats.forEach(G=>{const why=_groupProblem(G,MIN);if(why){notes.push({v:G.label+' (as groups)',why:'Cannot be used to split people: '+why});return;}
     const f=_counts(G.name),ks=Object.keys(f).sort((x,y)=>f[y]-f[x]),ga=ks[0],gb=ks[1],left=ks.slice(2);
     const leftTxt=left.length?' · left out: '+left.map(k=>esc(labelOf(G.name,k))+' (n='+f[k]+')').join(', '):'';
-    sc.forEach(S=>{const A=[],B=[];DATA.rows.forEach(r=>{const s=numAt(r,S.name);if(r[S.name]===''||r[S.name]==null||isNaN(s))return;const g=String(r[G.name]);if(g===String(ga))A.push(s);else if(g===String(gb))B.push(s);});
+    sc.forEach(S=>{const A=[],B=[];DATA.rows.forEach(r=>{const s=numAt(r,S.name);if(r[S.name]===''||r[S.name]==null||isNaN(s))return;const g=String(numAt(r,G.name));if(g===String(ga))A.push(s);else if(g===String(gb))B.push(s);});
       const key=G.label;skip[key]=skip[key]||[];
       if(A.length<2||B.length<2){skip[key].push({s:S.label,why:'only '+A.length+' and '+B.length+' valid answers in the two groups (need ≥2 each; blanks do not count)'});return;}
       const mA=mean(A),mB=mean(B),vA=variance(A),vB=variance(B),nA=A.length,nB=B.length;
