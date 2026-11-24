@@ -5333,9 +5333,11 @@ function colVals(name,asNum){const V=v(name);let vals=DATA.rows.map(r=>r[name]);
   if(V.textmap){vals=vals.map(x=>x in V.textmap?V.textmap[x]:'');}
   vals=vals.filter(x=>x!==''&&x!=null);
   return asNum?vals.map(Number).filter(x=>!isNaN(x)):vals.map(x=>String(x));}
+/* one numeric reader for every analysis: text answers (F/M, Y/N…) use the same codes Describe shows, so a text column switched to Scale is analysed everywhere */
+function numAt(r,name){const x=r[name];if(x===''||x==null)return NaN;const V=v(name);if(V&&V.textmap)return(x in V.textmap)?V.textmap[x]:NaN;return Number(x);}
 function labelOf(name,code){const V=v(name);return(V.codes&&V.codes[code]!=null)?V.codes[code]:String(code);}
 function _rnd(x){return Math.round(x*100)/100;}
-function makeBin(name,nb,method,asRole){const V=v(name);const vals=DATA.rows.map(r=>Number(r[name])).filter((x,i)=>DATA.rows[i][name]!==''&&DATA.rows[i][name]!=null&&!isNaN(x)).sort((a,b)=>a-b);if(vals.length<nb){alert('Not enough values to make '+nb+' groups.');return;}let cuts=[];if(method==='width'){const mn=vals[0],mx=vals[vals.length-1];for(let k=1;k<nb;k++)cuts.push(mn+k*(mx-mn)/nb);}else{for(let k=1;k<nb;k++){const pos=(vals.length-1)*k/nb,lo=Math.floor(pos);cuts.push(vals[lo]+((vals[lo+1]||vals[lo])-vals[lo])*(pos-lo));}}const edges=[vals[0]].concat(cuts).concat([vals[vals.length-1]]);const binOf=x=>{let k=0;while(k<nb-1&&x>cuts[k])k++;return k+1;};let col=name+'_bin',su=1;while(DATA.headers.indexOf(col)>=0)col=name+'_bin'+(++su);DATA.headers.push(col);DATA.rows.forEach(r=>{const x=Number(r[name]);r[col]=(r[name]===''||r[name]==null||isNaN(x))?'':binOf(x);});const codes={};for(let k=1;k<=nb;k++){codes[k]=_rnd(edges[k-1])+'\u2013'+_rnd(edges[k]);}DATA.vars.push({name:col,label:V.label+' (in '+nb+' groups)',role:(asRole==='scale'?'scale':'ordinal'),type:(asRole==='scale'?'likert':'coded'),suggest:'Created by binning '+V.label+' ('+(method==='width'?'equal width':'equal count')+(asRole==='scale'?'; a 1\u2013'+nb+' scale you can correlate':'; an ordered category you can cross-tabulate')+').',codes});renderVars();refreshSelectors();if($('#rawPeek')&&$('#rawPeek').style.display!=='none')renderRawPeek();}
+function makeBin(name,nb,method,asRole){const V=v(name);const vals=DATA.rows.map(r=>numAt(r,name)).filter((x,i)=>DATA.rows[i][name]!==''&&DATA.rows[i][name]!=null&&!isNaN(x)).sort((a,b)=>a-b);if(vals.length<nb){alert('Not enough values to make '+nb+' groups.');return;}let cuts=[];if(method==='width'){const mn=vals[0],mx=vals[vals.length-1];for(let k=1;k<nb;k++)cuts.push(mn+k*(mx-mn)/nb);}else{for(let k=1;k<nb;k++){const pos=(vals.length-1)*k/nb,lo=Math.floor(pos);cuts.push(vals[lo]+((vals[lo+1]||vals[lo])-vals[lo])*(pos-lo));}}const edges=[vals[0]].concat(cuts).concat([vals[vals.length-1]]);const binOf=x=>{let k=0;while(k<nb-1&&x>cuts[k])k++;return k+1;};let col=name+'_bin',su=1;while(DATA.headers.indexOf(col)>=0)col=name+'_bin'+(++su);DATA.headers.push(col);DATA.rows.forEach(r=>{const x=numAt(r,name);r[col]=(r[name]===''||r[name]==null||isNaN(x))?'':binOf(x);});const codes={};for(let k=1;k<=nb;k++){codes[k]=_rnd(edges[k-1])+'\u2013'+_rnd(edges[k]);}DATA.vars.push({name:col,label:V.label+' (in '+nb+' groups)',role:(asRole==='scale'?'scale':'ordinal'),type:(asRole==='scale'?'likert':'coded'),suggest:'Created by binning '+V.label+' ('+(method==='width'?'equal width':'equal count')+(asRole==='scale'?'; a 1\u2013'+nb+' scale you can correlate':'; an ordered category you can cross-tabulate')+').',codes});renderVars();refreshSelectors();if($('#rawPeek')&&$('#rawPeek').style.display!=='none')renderRawPeek();}
 function roleExplain(role){return({scale:'Scale — a number you can average (a rating or a count). Enables mean/SD, t-test and correlation.',nominal:'Category — named groups you count, not average (e.g. sex, channel). Enables frequencies and cross-tab + chi².',ordinal:'Ordered category — ranked groups (e.g. age band, low/med/high); counted like a category here.',id:'ID — one value per respondent; not analysed.',ignore:'Ignored — left out of every analysis.'})[role]||'';}
 function valuesSeen(V){const raw=DATA.rows.map(r=>r[V.name]);const miss=raw.filter(x=>x===''||x==null).length;const nums=colVals(V.name,true);if(!nums.length)return '<span style="color:var(--soft)">no numeric values</span>';const uniq=[...new Set(nums)].sort((a,b)=>a-b);let s='';if(V.role==='id'){s='unique identifier ('+uniq.length+' values)';}else if(uniq.length<=12){s=uniq.map(u=>{const lb=labelOf(V.name,u);const cnt=nums.filter(x=>x===u).length;return '<b>'+esc(String(u))+'</b>'+(lb!==String(u)?'='+esc(lb):'')+' <span style="color:var(--soft)">('+cnt+')</span>';}).join(' \u00b7 ');}else{s=uniq.length+' distinct, range <b>'+Math.min(...nums)+'\u2013'+Math.max(...nums)+'</b>, mean \u2248 '+mean(nums).toFixed(1);}if(miss)s+=' <span style="color:var(--soft)">\u00b7 '+miss+' blank</span>';return s;}
 function renderRawPeek(){const n=Math.min(20,DATA.rows.length);let h='<table class="t"><tr>'+DATA.headers.map(hd=>'<th>'+esc(hd)+'</th>').join('')+'</tr>';for(let i=0;i<n;i++){h+='<tr>'+DATA.headers.map(hd=>'<td>'+esc(DATA.rows[i][hd])+'</td>').join('')+'</tr>';}h+='</table><div class="hint" style="margin-top:4px">First '+n+' of '+DATA.rows.length+' rows, exactly as in the file (coded values). Use this and the \u201cValues seen\u201d column to decide each variable\u2019s role and what its codes mean.</div>';$('#rawPeek').innerHTML=h;}
@@ -5517,7 +5519,7 @@ function ttest(){
   const sn=$('#t_s').value,gn=$('#t_g').value,ga=$('#t_a').value,gb=$('#t_b').value,mode=$('#t_mode').value;const S=v(sn),G=v(gn);
   if(ga===gb){$('#t_out').innerHTML='<p class="warnmsg">Pick two different groups \u2014 a group compared with itself always gives a difference of 0.</p>';return;}
   const A=[],B=[];let blankA=0,blankB=0;
-  DATA.rows.forEach(r=>{const g=String(r[gn]),s=Number(r[sn]);const blank=(r[sn]===''||r[sn]==null||isNaN(s));
+  DATA.rows.forEach(r=>{const g=String(r[gn]),s=numAt(r,sn);const blank=(r[sn]===''||r[sn]==null||isNaN(s));
     if(g===String(ga)){blank?blankA++:A.push(s);}else if(g===String(gb)){blank?blankB++:B.push(s);}});
   const la=esc(labelOf(gn,ga)),lb=esc(labelOf(gn,gb));
   let what=`<div class="verdict"><b>What is compared:</b> the average of <b>${esc(S.label)}</b> for people whose <b>${esc(G.label)}</b> is \u201c${la}\u201d versus \u201c${lb}\u201d (independent samples, two-tailed).${blankA+blankB?' '+(blankA+blankB)+' blank answer(s) left out.':''}</div>`;
@@ -5536,7 +5538,7 @@ function ttestPaired(){
   const xn=$('#p_x').value,yn=$('#p_y').value;const X=v(xn),Y=v(yn);
   if(xn===yn){$('#t_out').innerHTML='<p class="warnmsg">Pick two different measures \u2014 a measure compared with itself always gives a difference of 0.</p>';return;}
   const D=[],PX=[],PY=[];let dropped=0;
-  DATA.rows.forEach(r=>{const a=Number(r[xn]),b=Number(r[yn]);
+  DATA.rows.forEach(r=>{const a=numAt(r,xn),b=numAt(r,yn);
     const bad=(r[xn]===''||r[xn]==null||isNaN(a)||r[yn]===''||r[yn]==null||isNaN(b));
     if(bad){dropped++;return;}
     D.push(a-b);PX.push(a);PY.push(b);});
@@ -5579,7 +5581,7 @@ render.corr=()=>{
 };
 function correlate(){
   const xn=$('#r_x').value,yn=$('#r_y').value;if(xn===yn){$('#r_out').innerHTML='<p class="warnmsg">Pick two different variables.</p>';return;}
-  const xs=[],ys=[];DATA.rows.forEach(r=>{const x=Number(r[xn]),y=Number(r[yn]);if(r[xn]===''||r[yn]===''||isNaN(x)||isNaN(y))return;xs.push(x);ys.push(y);});
+  const xs=[],ys=[];DATA.rows.forEach(r=>{const x=numAt(r,xn),y=numAt(r,yn);if(r[xn]===''||r[yn]===''||isNaN(x)||isNaN(y))return;xs.push(x);ys.push(y);});
   const n=xs.length,mx=mean(xs),my=mean(ys);let sxy=0,sxx=0,syy=0;for(let i=0;i<n;i++){sxy+=(xs[i]-mx)*(ys[i]-my);sxx+=(xs[i]-mx)**2;syy+=(ys[i]-my)**2;}
   const r=sxy/Math.sqrt(sxx*syy);const t=r*Math.sqrt((n-2)/(1-r*r)),p=tP(t,n-2);
   const str=Math.abs(r)<0.1?'negligible':Math.abs(r)<0.3?'weak':Math.abs(r)<0.5?'moderate':Math.abs(r)<0.7?'strong':'very strong';
@@ -5671,7 +5673,7 @@ window.addEventListener('beforeprint',()=>{if(!$('#printout').innerHTML.trim())b
 function _scalesFor(){return DATA.vars.filter(V=>V.role==='scale');}
 function _catsFor(){return DATA.vars.filter(V=>{if(V.role!=='nominal'&&V.role!=='ordinal')return false;const u=[...new Set(colVals(V.name,true))];return u.length>=2&&u.length<=12;});}
 function _abbr(s){s=String(s);return s.length>16?s.slice(0,15)+'…':s;}
-function _corrPair(xn,yn){const xs=[],ys=[];DATA.rows.forEach(r=>{const x=Number(r[xn]),y=Number(r[yn]);if(r[xn]===''||r[yn]===''||isNaN(x)||isNaN(y))return;xs.push(x);ys.push(y);});const n=xs.length;if(n<3)return{r:NaN,p:NaN,n};const mx=mean(xs),my=mean(ys);let sxy=0,sxx=0,syy=0;for(let i=0;i<n;i++){sxy+=(xs[i]-mx)*(ys[i]-my);sxx+=(xs[i]-mx)**2;syy+=(ys[i]-my)**2;}const r=sxy/Math.sqrt(sxx*syy);if(!isFinite(r))return{r:NaN,p:NaN,n};const t=r*Math.sqrt((n-2)/(1-r*r)),p=tP(t,n-2);return{r,p,n};}
+function _corrPair(xn,yn){const xs=[],ys=[];DATA.rows.forEach(r=>{const x=numAt(r,xn),y=numAt(r,yn);if(r[xn]===''||r[yn]===''||isNaN(x)||isNaN(y))return;xs.push(x);ys.push(y);});const n=xs.length;if(n<3)return{r:NaN,p:NaN,n};const mx=mean(xs),my=mean(ys);let sxy=0,sxx=0,syy=0;for(let i=0;i<n;i++){sxy+=(xs[i]-mx)*(ys[i]-my);sxx+=(xs[i]-mx)**2;syy+=(ys[i]-my)**2;}const r=sxy/Math.sqrt(sxx*syy);if(!isFinite(r))return{r:NaN,p:NaN,n};const t=r*Math.sqrt((n-2)/(1-r*r)),p=tP(t,n-2);return{r,p,n};}
 function _crossPair(rn,cn){const pairs=DATA.rows.map(r=>[r[rn],r[cn]]).filter(p=>p[0]!==''&&p[1]!==''&&p[0]!=null&&p[1]!=null);if(pairs.length<4)return null;const rk=[...new Set(pairs.map(p=>p[0]))].sort((a,b)=>a-b),ck=[...new Set(pairs.map(p=>p[1]))].sort((a,b)=>a-b);if(rk.length<2||ck.length<2)return null;const O={};rk.forEach(r=>{O[r]={};ck.forEach(c=>O[r][c]=0);});pairs.forEach(p=>O[p[0]][p[1]]++);const rt={},ct={};let N=0;rk.forEach(r=>{rt[r]=0;ck.forEach(c=>rt[r]+=O[r][c]);N+=rt[r];});ck.forEach(c=>{ct[c]=0;rk.forEach(r=>ct[c]+=O[r][c]);});let chi=0,low=0;rk.forEach(r=>ck.forEach(c=>{const E=rt[r]*ct[c]/N;if(E<5)low++;chi+=(O[r][c]-E)**2/E;}));const df=(rk.length-1)*(ck.length-1),p=chi2p(chi,df),V=Math.sqrt(chi/(N*Math.min(rk.length-1,ck.length-1)));return{chi,df,p,V,low,N};}
 /* ---- explanations: what each analysis compares, and what could not be run (and why) ---- */
 const _LIKERT_TXT=/acuerdo|desacuerdo|probable|improbable|importante|mejor|peor|nada|poco|mucho|bastante|muy|agree|disagree|likely|unlikely|important|satisf|never|always|nunca|siempre|atractiv|dispuest|útil|util/i;
@@ -5731,7 +5733,7 @@ function runAllT(){const sc=_scalesFor(),cats=DATA.vars.filter(V=>V.role==='nomi
   cats.forEach(G=>{const why=_groupProblem(G,MIN);if(why){notes.push({v:G.label+' (as groups)',why:'Cannot be used to split people: '+why});return;}
     const f=_counts(G.name),ks=Object.keys(f).sort((x,y)=>f[y]-f[x]),ga=ks[0],gb=ks[1],left=ks.slice(2);
     const leftTxt=left.length?' · left out: '+left.map(k=>esc(labelOf(G.name,k))+' (n='+f[k]+')').join(', '):'';
-    sc.forEach(S=>{const A=[],B=[];DATA.rows.forEach(r=>{const s=Number(r[S.name]);if(r[S.name]===''||r[S.name]==null||isNaN(s))return;const g=String(r[G.name]);if(g===String(ga))A.push(s);else if(g===String(gb))B.push(s);});
+    sc.forEach(S=>{const A=[],B=[];DATA.rows.forEach(r=>{const s=numAt(r,S.name);if(r[S.name]===''||r[S.name]==null||isNaN(s))return;const g=String(r[G.name]);if(g===String(ga))A.push(s);else if(g===String(gb))B.push(s);});
       const key=G.label;skip[key]=skip[key]||[];
       if(A.length<2||B.length<2){skip[key].push({s:S.label,why:'only '+A.length+' and '+B.length+' valid answers in the two groups (need ≥2 each; blanks do not count)'});return;}
       const mA=mean(A),mB=mean(B),vA=variance(A),vB=variance(B),nA=A.length,nB=B.length;
@@ -5762,7 +5764,13 @@ function _catOf(t){t=(t||'').toLowerCase();
   if(t.indexOf('t-test')>=0||t.indexOf('compare group')>=0||t.indexOf('t test')>=0)return 'ttest';
   if(t.indexOf('describe')>=0||t.indexOf('descriptive')>=0||t.indexOf('frequenc')>=0)return 'desc';
   return 'other';}
-logIt=function(title,html,cat){LOG.push({title,html,sel:true,cat:cat||_catOf(title)});renderLog();};
+/* one entry per analysis (same title): re-running with nothing changed adds nothing; if the data/roles changed, the entry is replaced in place */
+let LOGSTAT=null;
+logIt=function(title,html,cat){const c=cat||_catOf(title),i=LOG.findIndex(it=>it.title===title);let st;
+  if(i<0){LOG.push({title,html,sel:true,cat:c});st='new';}
+  else if(LOG[i].html===html){st='same';}
+  else{LOG[i]={title,html,sel:LOG[i].sel,cat:c,upd:true};st='updated';}
+  if(LOGSTAT)LOGSTAT[st]++;renderLog();return st;};
 renderLog=function(){
   const present=_CATORDER.filter(c=>LOG.some(it=>(it.cat||'other')===c));
   if(LOGTAB!=='all'&&present.indexOf(LOGTAB)<0)LOGTAB='all';
@@ -5776,7 +5784,7 @@ renderLog=function(){
     }).join('')+'</div>';
   }
   const shown=LOG.map((it,i)=>({it,i})).filter(o=>LOGTAB==='all'||(o.it.cat||'other')===LOGTAB);
-  const body=shown.map(({it,i})=>'<div class="item"><h4>'+esc(it.title)+' <button class="copybtn" style="float:right;padding:3px 8px;font-size:11px" data-rm="'+i+'">remove</button><label style="float:right;font-size:11px;margin-right:8px;cursor:pointer"><input type="checkbox" data-sel="'+i+'" '+(it.sel!==false?'checked':'')+'> in PDF</label></h4>'+it.html+'</div>').join('')||'<p class="hint">Run an analysis above and it appears here.</p>';
+  const body=shown.map(({it,i})=>'<div class="item"><h4>'+esc(it.title)+(it.upd?' <span style="font-size:11px;font-weight:600;color:var(--leaf,#2f6b4f)">↻ updated</span>':'')+' <button class="copybtn" style="float:right;padding:3px 8px;font-size:11px" data-rm="'+i+'">remove</button><label style="float:right;font-size:11px;margin-right:8px;cursor:pointer"><input type="checkbox" data-sel="'+i+'" '+(it.sel!==false?'checked':'')+'> in PDF</label></h4>'+it.html+'</div>').join('')||'<p class="hint">Run an analysis above and it appears here.</p>';
   $('#log').innerHTML=tabs+body;
   $('#log').querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{LOGTAB=b.dataset.tab;renderLog();});
   $('#log').querySelectorAll('[data-rm]').forEach(b=>b.onclick=()=>{LOG.splice(+b.dataset.rm,1);renderLog();});
@@ -5807,7 +5815,7 @@ function runAllPaired(){
   for(let i=0;i<rate.length;i++)for(let j=i+1;j<rate.length;j++){
     const A=rate[i],B=rate[j],aa=colVals(A.name,true),bb=colVals(B.name,true);
     if(Math.min(...aa)!==Math.min(...bb)||Math.max(...aa)!==Math.max(...bb))continue;
-    const d=[];let sx=0,sy=0;DATA.rows.forEach(r=>{const x=Number(r[A.name]),y=Number(r[B.name]);
+    const d=[];let sx=0,sy=0;DATA.rows.forEach(r=>{const x=numAt(r,A.name),y=numAt(r,B.name);
       if(r[A.name]===''||r[A.name]==null||isNaN(x)||r[B.name]===''||r[B.name]==null||isNaN(y))return;d.push(x-y);sx+=x;sy+=y;});
     if(d.length<2)continue;const n=d.length,md=mean(d),s=sd(d);if(s===0)continue;
     const t=md/(s/Math.sqrt(n)),df=n-1,p=tP(t,df),dz=Math.abs(md/s);
@@ -5822,7 +5830,10 @@ function runAllPaired(){
   h+=_notesHTML('Not paired - and why',notes);
   logIt('Paired t-tests - comparable rating scales',h,'ttest');}
 
-runAll=function(){if(!DATA){return;}const b=$('#runAll');b.disabled=true;b.textContent='… running';setTimeout(()=>{runAllDesc();runAllCorr();runAllCross();runAllT();runAllOne();runAllPaired();b.disabled=false;b.textContent='⚡ Run ALL analyses at once';$('#logCard').style.display='';LOGTAB='desc';renderLog();$('#logCard').scrollIntoView({behavior:'smooth'});},30);};
+function _runAllMsg(S){let m=$('#runAllMsg');if(!m){m=document.createElement('div');m.id='runAllMsg';m.style.cssText='margin:6px 0 0;font-size:12.5px;font-weight:600';$('#runAllRow').after(m);}
+  if(!S.new&&!S.updated){m.style.color='var(--soft,#4a5a50)';m.textContent='Nothing changed since the last run — the results are already in the log (nothing added).';}
+  else{m.style.color='var(--leaf,#2f6b4f)';m.textContent='Done: '+[S.new?S.new+' new':'',S.updated?S.updated+' updated (marked ↻)':'',S.same?S.same+' unchanged':''].filter(Boolean).join(' · ')+'.';}}
+runAll=function(){if(!DATA){return;}const b=$('#runAll');b.disabled=true;b.textContent='… running';setTimeout(()=>{LOG.forEach(it=>it.upd=false);LOGSTAT={new:0,updated:0,same:0};runAllDesc();runAllCorr();runAllCross();runAllT();runAllOne();runAllPaired();const S=LOGSTAT;LOGSTAT=null;_runAllMsg(S);b.disabled=false;b.textContent='⚡ Run ALL analyses at once';$('#logCard').style.display='';LOGTAB='desc';renderLog();$('#logCard').scrollIntoView({behavior:'smooth'});},30);};
 if($('#runAll'))$('#runAll').onclick=runAll;
 
 /* optional clustering: k-means on the scale variables (standardised) */
@@ -5832,18 +5843,18 @@ function runCluster(){
   if(sc.length<2){$('#logCard').style.display='';logIt('Clustering — segments','<div class="verdict">Need at least two <b>scale</b> variables to form segments. Set some variables to “Scale”, or bin a number into a 1–k scale first.</div>','cluster');LOGTAB='cluster';renderLog();$('#logCard').scrollIntoView({behavior:'smooth'});return;}
   const k=+((($('#clK')||{}).value)||3);
   /* choose usable variables and say why the others are left out */
-  const N=DATA.rows.length,_blank=V=>DATA.rows.filter(r=>{const x=Number(r[V.name]);return r[V.name]===''||r[V.name]==null||isNaN(x);}).length;
+  const N=DATA.rows.length,_blank=V=>DATA.rows.filter(r=>{const x=numAt(r,V.name);return r[V.name]===''||r[V.name]==null||isNaN(x);}).length;
   const dropped=[];let use=[];
   sc.forEach(V=>{const b=_blank(V);
     if(/control|atenci[oó]n|attention|check/i.test(V.label)){dropped.push({v:V.label,why:'Attention-check question — it measures care, not attitudes, so it would distort the segments.'});return;}
     if(b>0.3*N){dropped.push({v:V.label,why:b+' of '+N+' respondents left it blank ('+Math.round(100*b/N)+'%, e.g. “I don’t know this brand”). Keeping it would leave too few complete respondents.'});return;}
     if(!_sdOK(V.name)){dropped.push({v:V.label,why:'Everyone gave the same value — it cannot separate segments.'});return;}
     use.push(V);});
-  const _complete=vs=>DATA.rows.filter(r=>vs.every(V=>{const x=Number(r[V.name]);return!(r[V.name]===''||r[V.name]==null||isNaN(x));})).length;
+  const _complete=vs=>DATA.rows.filter(r=>vs.every(V=>{const x=numAt(r,V.name);return!(r[V.name]===''||r[V.name]==null||isNaN(x));})).length;
   while(use.length>2&&_complete(use)<k*3){const worst=use.slice().sort((a,b)=>_blank(b)-_blank(a))[0];dropped.push({v:worst.label,why:'Dropped to keep enough complete respondents ('+_blank(worst)+' blanks).'});use=use.filter(V=>V!==worst);}
   const notesH=_notesHTML('Left out of the segmentation — and why',dropped);
   const names=use.map(V=>V.name), m=names.length, X=[];
-  DATA.rows.forEach(r=>{const row=names.map(n=>Number(r[n]));if(row.some((x,j)=>r[names[j]]===''||r[names[j]]==null||isNaN(x)))return;X.push(row);});
+  DATA.rows.forEach(r=>{const row=names.map(n=>numAt(r,n));if(row.some((x,j)=>r[names[j]]===''||r[names[j]]==null||isNaN(x)))return;X.push(row);});
   const n=X.length;
   if(m<2||n<k*3){$('#logCard').style.display='';logIt('Clustering — segments','<div class="verdict bad"><b>Segmentation not possible:</b> '+(m<2?'fewer than two usable scale variables remain (see below).':'only '+n+' respondents answered all '+m+' usable scale variables — at least '+(k*3)+' are needed for '+k+' segments. Try fewer segments.')+'</div>'+notesH,'cluster');LOGTAB='cluster';renderLog();$('#logCard').scrollIntoView({behavior:'smooth'});return;}
   sc.length=0;use.forEach(V=>sc.push(V));
